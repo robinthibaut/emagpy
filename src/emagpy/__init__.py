@@ -7,5 +7,5 @@ Created on Sun May  5 22:03:32 2019
 """
 EMagPy_version = "1.3.3"
 name = "emagpy"
-from emagpy.Problem import Problem
-from emagpy.Survey import Survey
+from emagpy.src.emagpy.Problem import Problem
+from emagpy.src.emagpy.Survey import Survey

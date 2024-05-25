@@ -7,20 +7,19 @@ Created on Tue Apr 16 20:27:12 2019
 """
 import os
 import warnings
-from datetime import time, datetime
 
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.path as mpath
+import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
-from scipy.stats import linregress
-from scipy.spatial.distance import cdist
+import numpy as np
+import pandas as pd
 from scipy.interpolate import griddata, NearestNDInterpolator
-from scipy.spatial import Delaunay
 from scipy.spatial import ConvexHull
+from scipy.spatial import Delaunay
+from scipy.spatial.distance import cdist
+from scipy.stats import linregress
 
-from emagpy.invertHelper import Q2eca
+from emagpy.src.emagpy.invertHelper import Q2eca
 
 
 def clipConvexHull(xdata, ydata, x, y, z):

@@ -16,10 +16,10 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 import numpy as np
 import pandas as pd
-from emagpy.Survey import Survey, idw, griddata, clipConcaveHull, tricontourf_clipped
+from emagpy.src.emagpy.Survey import Survey, idw, griddata, clipConcaveHull, tricontourf_clipped
 
 # emagpy custom import
-from emagpy.invertHelper import (
+from emagpy.src.emagpy.invertHelper import (
     fCS,
     fMaxwellECa,
     fMaxwellQ,
@@ -951,9 +951,7 @@ class Problem(object):
                         # Gauss-Newton algorithm
                         cond = np.copy(ini0[1])[:, None]
                         app = obs.copy()
-                        # rrmse = np.sqrt(1/len(app)*np.sum(dataMisfit(cond[:,0], app, ini0)**2)/np.sum(app**2))
-                        # print('ini: RMSE: {:.5f}%'.format(rrmse), ' '.join(
-                        # ['{:.2f}'.format(a) for a in cond[:,0]]))
+
                         maxiter = options["maxiter"] if "maxiter" in options else 3
                         for l in range(
                                 maxiter
@@ -966,9 +964,7 @@ class Problem(object):
                             solution = np.linalg.solve(LHS, RHS)
                             cond = cond + solution
                             out = cond.flatten()
-                            # rrmse = np.sqrt(1/len(app)*np.sum(dataMisfit(out, app, ini0)**2)/np.sum(app**2))
-                            # print('{:d}: RMSE: {:.5f}%'.format(l, rrmse), ' '.join(
-                            # ['{:.2f}'.format(a) for a in cond[:,0]]))
+
                         depth[j, vd] = out[: np.sum(vd)]
                         model[j, vc] = out[np.sum(vd):]
                         if forwardModel == "QP":
@@ -983,6 +979,11 @@ class Problem(object):
                     except Exception as e:
                         print("Killed")
                         return
+
+                self.models.append(model)
+                self.depths.append(depth)
+                self.misfits.append(rmse)
+                self.pstds.append(stds)
 
             # parallel computing with loky backend
             if (method != "ANN") & (njobs != 1):
@@ -1050,11 +1051,10 @@ class Problem(object):
                             )
                             * 100
                     )
-            self.models.append(model)
-            self.depths.append(depth)
-            self.misfits.append(rmse)
-            self.pstds.append(stds)
-            # dump('{:d} measurements inverted\n'.format(apps.shape[0]))
+                self.models.append(model)
+                self.depths.append(depth)
+                self.misfits.append(rmse)
+                self.pstds.append(stds)
 
     def buildANN(
             self,
@@ -1092,7 +1092,6 @@ class Problem(object):
             from tensorflow import keras
         except:
             raise ImportError("Tensorflow is needed for ANN inversion.")
-            return
 
         if dump is None:
             def dump(x):
@@ -1220,7 +1219,7 @@ class Problem(object):
             plot_history(history)
 
     def invertGN(self, alpha=0.07, alpha_ref=None, dump=None):
-        """Fast inversion usign Gauss-Newton and cumulative sensitivity.
+        """Fast inversion using Gauss-Newton and cumulative sensitivity.
 
         Parameters
         ----------

@@ -404,7 +404,7 @@ class Problem(object):
             gamma=0.0,
             dump=None,
             bnds=None,
-            options={},
+            options=None,
             Lscaling=False,
             rep=100,
             noise=0.05,
@@ -475,6 +475,8 @@ class Problem(object):
             (n_cpus + 1 + n_jobs) are used. Thus for n_jobs = -2, all CPUs
             but one are used.
         """
+        if options is None:
+            options = {}
         mMinimize = ["L-BFGS-B", "TNC", "CG", "Nelder-Mead"]
         mMCMC = ["ROPE", "SCEUA", "DREAM", "MCMC"]
         mOther = ["ANN", "Gauss-Newton", "GPS"]

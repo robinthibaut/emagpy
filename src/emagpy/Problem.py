@@ -431,7 +431,7 @@ class Problem(object):
             Note that smoothing (alpha, beta, gamma) and regularization are not
             supported by ANN, MCMC, DREAM and SCUEA (but well by ROPE).
             Another option is the use of the Gauss-Newton (GN) algorithm which can be
-            faster in some situation. Maximum number of GN iteration can be specified as
+            faster in some situations. Maximum number of GN iterations can be specified as
             options={maxiter:3}. Default is 1.
         regularization : str, optional
             Type of regularization, either l1 (blocky model) or l2 (smooth model)

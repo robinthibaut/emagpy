@@ -23,7 +23,6 @@ from scipy.constants import mu_0
 from scipy import special, integrate
 from scipy.optimize import newton, brent, minimize_scalar, minimize, curve_fit
 
-
 # useful functions for Hankel transform
 
 # load this important variables once (to speed up) -> do not overwrite them !
@@ -50,7 +49,7 @@ def func_hankel(typ, K, r):
         #        w = np.loadtxt('j1_140.txt')
         w = hankel_w1
     lamb = (
-        1 / r * 10 ** (a + (i - 1) * s)
+            1 / r * 10 ** (a + (i - 1) * s)
     )  # lambda here is not the frequency just your integral variable
     #    K0 = np.exp(-lamb0*(z+htx)+getRTE(lamb0)*np.exp(lamb0*(z-htx)))*lamb0
     hankel = np.sum(K(lamb) * w) / r
@@ -123,17 +122,17 @@ def getR0_1(lamb, sigg, f, d):
     sigma = np.r_[0, sigg.copy()]  # sigma 0 is above the ground
     d = np.r_[d.copy(), 0]  # last one won't be used, just for index
     omega = 2 * np.pi * f  # assume single omega here as lamb is already a vector
-    u = np.sqrt(lamb**2 + 1j * sigma * mu_0 * omega)
+    u = np.sqrt(lamb ** 2 + 1j * sigma * mu_0 * omega)
     N = u / (1j * mu_0 * omega)
     Y = (
-        np.zeros(N.shape, dtype=complex) * np.nan
+            np.zeros(N.shape, dtype=complex) * np.nan
     )  # Y is actually -1 smaller than N but easier like this for index
     Y[-1] = N[-1]
     for i in range(len(N) - 2, 0, -1):
         Y[i] = (
-            N[i]
-            * (Y[i + 1] + N[i] * np.tanh(d[i] * u[i]))
-            / (N[i] + Y[i + 1] * np.tanh(d[i] * u[i]))
+                N[i]
+                * (Y[i + 1] + N[i] * np.tanh(d[i] * u[i]))
+                / (N[i] + Y[i + 1] * np.tanh(d[i] * u[i]))
         )
     R0 = (N[0] - Y[1]) / (N[0] + Y[1])
     return R0
@@ -163,7 +162,7 @@ def getR0_2(lamb, sigg, f, d):
     h = np.concatenate([[0], d, [0]])  # last one won't be used, because Rn+1 = 0 and
     # first zero won't be used because we never use hn, always hn+1, just
     # for easier indexing
-    gamma = np.sqrt(lamb**2 + 1j * 2 * np.pi * f * mu_0 * sigma)
+    gamma = np.sqrt(lamb ** 2 + 1j * 2 * np.pi * f * mu_0 * sigma)
     R = np.zeros((len(sigma)), dtype=complex)  # *np.nan
     #    R[-1] = 0 # no waves from the lower half space
     for i in range(len(sigma) - 2, -1, -1):
@@ -172,7 +171,7 @@ def getR0_2(lamb, sigg, f, d):
         )
         den = 1 + (gamma[i] - gamma[i + 1]) / (gamma[i] + gamma[i + 1]) * R[
             i + 1
-        ] * np.exp(-2 * gamma[i + 1] * h[i + 1])
+            ] * np.exp(-2 * gamma[i + 1] * h[i + 1])
         R[i] = num / den
     return R[0]
 
@@ -213,15 +212,15 @@ def getQhomogeneous(cpos, s, sig, f):
     g = np.sqrt(1j * omega * mu_0 * sig)  # for gamma
     if cpos == "hcp":
         Q = (
-            2
-            / (g * s) ** 2
-            * (9 - (9 + 9 * g * s + 4 * (g * s) ** 2 + (g * s) ** 3) * np.exp(-g * s))
+                2
+                / (g * s) ** 2
+                * (9 - (9 + 9 * g * s + 4 * (g * s) ** 2 + (g * s) ** 3) * np.exp(-g * s))
         )
     elif cpos == "vcp":
         Q = 2 * (
-            1
-            - 3 / (g * s) ** 2
-            + (3 + 3 * g * s + (g * s) ** 2) * np.exp(-g * s) / (g * s) ** 2
+                1
+                - 3 / (g * s) ** 2
+                + (3 + 3 * g * s + (g * s) ** 2) * np.exp(-g * s) / (g * s) ** 2
         )
     return Q
 
@@ -243,7 +242,7 @@ def getQ(cpos, s, sig, f, h, typ=5):
         if typ == 1 | 5:
 
             def func(lamb):
-                return getRn(lamb, sig, f, h) * lamb**2
+                return getRn(lamb, sig, f, h) * lamb ** 2
 
         else:
 
@@ -257,7 +256,7 @@ def getQ(cpos, s, sig, f, h, typ=5):
         5: func_hankel5,
     }
     dicoBessel = {"hcp": 0, "vcp": 1}
-    dicoCoefs = {"hcp": s**3, "vcp": s**2}
+    dicoCoefs = {"hcp": s ** 3, "vcp": s ** 2}
     return 1 - dicoCoefs[cpos] * dicoHankel[typ](dicoBessel[cpos], func, s)
 
 
@@ -271,7 +270,7 @@ def Q2eca(Q, s, f=30000):
     """Returns apparent conductivity given the quadrature value (assuming we
     are in the Low Induction Number (LIN) approximation)
     """
-    return 4 / (2 * np.pi * f * mu_0 * s**2) * np.imag(Q)
+    return 4 / (2 * np.pi * f * mu_0 * s ** 2) * np.imag(Q)
 
 
 def eca2Q(eca, s, f=30000):
@@ -279,7 +278,7 @@ def eca2Q(eca, s, f=30000):
     conductivity value (assuming we are in the Low Induction Number (LIN)
     approximation)
     """
-    return eca / (4 / (2 * np.pi * f * mu_0 * s**2))
+    return eca / (4 / (2 * np.pi * f * mu_0 * s ** 2))
 
 
 # test
@@ -320,15 +319,15 @@ def getRn2(lamb, sigg, f, d):  # compute reflexion coefficients
     realPart = np.repeat(lamb[:, None], sigmaLen, axis=1) ** 2
     imagPart = 2 * np.pi * f * mu_0 * np.repeat(sigma[:, None], len(lamb), axis=1)
     gamma = np.sqrt(realPart.T + 1j * imagPart)
-    #    gamma = np.sqrt(lamb**2 + 1j*2*np.pi*f*mu_0*sigma)
     R = np.zeros((sigmaLen, len(lamb)), dtype=complex)  # *np.nan
     R[-1, :] = 0 + 0j  # no waves from the lower half space
     for i in range(sigmaLen - 2, -1, -1):  # it's recursive so needs for loop
         R[i, :] = (gamma[i, :] - gamma[i + 1, :]) / (gamma[i, :] + gamma[i + 1, :]) + R[
-            i + 1, :
-        ] * np.exp(-2 * gamma[i + 1, :] * h[i + 1])
+                                                                                      i + 1, :
+                                                                                      ] * np.exp(
+            -2 * gamma[i + 1, :] * h[i + 1])
         R[i, :] /= 1 + (gamma[i, :] - gamma[i + 1, :]) / (
-            gamma[i, :] + gamma[i + 1, :]
+                gamma[i, :] + gamma[i + 1, :]
         ) * R[i + 1, :] * np.exp(-2 * gamma[i + 1, :] * h[i + 1])
 
     return R[0, :]
@@ -341,23 +340,23 @@ def getRn2(lamb, sigg, f, d):  # compute reflexion coefficients
 
 
 # @njit
-def getQ2(cpos, s, sig, f, h, typ=None):
+def getQ2(cpos, s, sig, f, h):
     lamb = hankel5_lamb / s  # normalized to be used in Hankel
     if cpos == "vcp":
         w = hankel5_w1  # for Bessel function of order 1
         K = getRn2(lamb, sig, f, h) * lamb  # kernel with reflexion coef
         hankel = np.sum(w * K / s)  # hankel transform
-        return 1 - s**2 * hankel
+        return 1 - s ** 2 * hankel
     elif cpos == "hcp":
         w = hankel5_w0  # for Bessel function of order 0
-        K = getRn2(lamb, sig, f, h) * lamb**2  # kernel with reflexion coef
+        K = getRn2(lamb, sig, f, h) * lamb ** 2  # kernel with reflexion coef
         hankel = np.sum(w * K / s)  # hankel transform
-        return 1 - s**3 * hankel
+        return 1 - s ** 3 * hankel
     elif cpos == "prp":  # see Anderson for correct formula
         w = hankel5_w1  # for Bessel function of order 0
-        K = getRn2(lamb, sig, f, h) * lamb**2  # kernel with reflexion coef
+        K = getRn2(lamb, sig, f, h) * lamb ** 2  # kernel with reflexion coef
         hankel = np.sum(w * K / s)  # hankel transform
-        return 0 - s**3 * hankel
+        return - s ** 3 * hankel
 
 
 def getQs(cond, depths, s, cpos, f, hx=0):
@@ -377,22 +376,6 @@ def getQs(cond, depths, s, cpos, f, hx=0):
             sig = cond
         app[i] = getQ2(cpos[i], s[i], sig, f=f[i], h=thick)
     return app
-
-
-# sigH = 60*1e-3 # S/m
-# sig = np.ones(3)*sigH
-# f = 30000
-# h = np.array([0.3, 0.5])
-# s = 0.71
-# cpos = 'hcp'
-# lamb = hankel5_lamb/s
-# %timeit Ka = getRn(lamb, sig, f, h) # 55 ms
-# %timeit Kb = getRn2(lamb, sig, f, h) # 662 us
-# %timeit getQ(cpos, s, sig, f, h) # 47.5 ms
-# getQ2(cpos, s, sig, f, h) # 672 us !
-# %timeit getQhomogeneous('hcp',0.71, 60, 30000)
-# print(getQ2('hcp', 0.71, np.array([60, 60]), 30000, np.array([1])))
-# print(getQ('hcp', 0.71, np.array([60, 60]), 30000, np.array([1])))
 
 
 # definition of forward model used
@@ -425,53 +408,70 @@ def fMaxwellECa(cond, depths, s, cpos, hx=0, f=30000):
 
 def fMaxwellQ(cond, depths, s, cpos, hx=0, f=30000, maxiter=50):
     """Compute the quadrature ratio using Maxwell equation and then try to
-    find a value of conductivity that match the observed Q
+    find a value of conductivity that matches the observed Q.
+
+    Parameters:
+    cond (array-like): Conductivity values in mS/m.
+    depths (array-like): Depth values.
+    s (array-like): Source positions.
+    cpos (array-like): Coil positions.
+    hx (float or array-like, optional): Horizontal distance. Default is 0.
+    f (float or array-like, optional): Frequency. Default is 30000.
+    maxiter (int, optional): Maximum iterations for Newton's method. Default is 50.
+
+    Returns:
+    array-like: Response values.
     """
+    # Input validation
     if len(cond) - 1 != len(depths):
-        raise ValueError("len(cond)-1 should be equal to len(depths).")
+        raise ValueError("len(cond) - 1 should be equal to len(depths).")
     if len(s) != len(cpos):
         raise ValueError("len(s) should be equal to len(cpos).")
-    if isinstance(hx, int) or isinstance(hx, float):
-        hx = [hx] * len(s)
-    if isinstance(f, int) or isinstance(f, float):
-        f = [f] * len(s)
-    #    eca0 = fCS(cond, depths, s, cpos, hx=hx) # to kick start the solver
-    h = np.r_[depths[0], np.diff(depths)]
-    response = np.zeros(len(s)) * np.nan
-    cond = cond * 1e-3  # convert to S/m
+
+    # Ensure hx and f are arrays
+    hx = np.asarray(hx) if isinstance(hx, (list, np.ndarray)) else np.full(len(s), hx)
+    f = np.asarray(f) if isinstance(f, (list, np.ndarray)) else np.full(len(s), f)
+
+    # Validate hx and f lengths
+    if len(hx) != len(s):
+        raise ValueError("Length of hx should be equal to length of s.")
+    if len(f) != len(s):
+        raise ValueError("Length of f should be equal to length of s.")
+
+    h = np.concatenate(([depths[0]], np.diff(depths)))
+    response = np.full(len(s), np.nan)
+    cond = np.asarray(cond) * 1e-3  # Convert to S/m
+
     for i in range(len(s)):
-        if hx[i] != 0:  # adding air layer of 0 mS/m
-            thick = np.r_[hx[i], h]
-            sig = np.r_[0, cond]
+        if hx[i] != 0:  # Adding air layer of 0 mS/m
+            thick = np.concatenate(([hx[i]], h))
+            sig = np.concatenate(([0], cond))
         else:
             thick = h
             sig = cond
-        Qobs = np.imag(getQ2(cpos[i], s[i], sig, f[i], thick))
-        if cpos[i] == "prp":  # we don't have analytical for PRP
 
+        Qobs = np.imag(getQ2(cpos[i], s[i], sig, f[i], thick))
+
+        if cpos[i] == "prp":  # We don't have analytical for PRP
             def objfunc(asig):
-                sigg = np.ones(len(cond)) * asig
+                sigg = np.full(len(cond), asig)
                 Qmod = np.imag(getQ2(cpos[i], s[i], sigg, f[i], thick))
                 return np.abs(Qmod - Qobs)
-
-        else:
-
-            def objfunc(asig):  # analytical is much faster
-                Qmod = np.imag(
-                    getQhomogeneous(cpos[i], s[i], asig, f[i])
-                )  # faster even if more rounding errors
+        else:  # Analytical is much faster
+            def objfunc(asig):
+                Qmod = np.imag(getQhomogeneous(cpos[i], s[i], asig, f[i]))
                 return np.abs(Qmod - Qobs)
 
-        sig0 = Q2eca(
-            getQ2(cpos[i], s[i], cond, f[i], thick), s[i], f[i]
-        )  # still in S/m
-        # sig0 = eca0[i]
-        # res = minimize(objfunc, x0=sig0, method='L-BFGS-B')
-        # zero = res.x[0]*1e3
-        # res = minimize_scalar(objfunc)#, brack=(sig0*0.8, sig0, sig0*1.2))*1e3
-        # zero = res.x
-        zero = newton(objfunc, sig0, maxiter=maxiter) * 1e3  # back to mS/m # faster !
-        response[i] = zero
+        sig0 = Q2eca(getQ2(cpos[i], s[i], cond, f[i], thick), s[i], f[i])  # Initial guess
+
+        try:
+            tol = 1e-3  # Tolerance for convergence
+            zero = newton(objfunc, sig0, maxiter=maxiter, tol=tol) * 1e3  # Back to mS/m
+            response[i] = zero
+        except RuntimeError as e:
+            print(f"Newton's method did not converge for index {i}: {e}")
+            response[i] = np.nan  # Indicate failure to converge
+
     return response
 
 
@@ -541,44 +541,30 @@ def emSens(depths, s, coilPosition, hx=0, rescaled=False):
     z = np.array(depths) / s
     # from mcNeil 1980 in Callegary2007
     if coilPosition == "hcp":
-        cs = 1 / np.sqrt(4 * z**2 + 1)
+        cs = 1 / np.sqrt(4 * z ** 2 + 1)
     if coilPosition == "vcp":
-        cs = np.sqrt(4 * z**2 + 1) - 2 * z
+        cs = np.sqrt(4 * z ** 2 + 1) - 2 * z
     if coilPosition == "prp":
-        cs = 1 - 2 * z / np.sqrt(4 * z**2 + 1)
+        cs = 1 - 2 * z / np.sqrt(4 * z ** 2 + 1)
 
     if (
-        hx != 0
+            hx != 0
     ) and rescaled is True:  # rescale the cumulative sensitivity so that it reaches 1
         cs = cs / cs[0]
 
     return cs  # all but the first one as it is just use to scale everything
 
 
-# test code
-# depths = np.arange(0, 2, 0.1)
-# cs1 = emSens(depths, 0.32, 'hcp', hx=0)
-# cs2 = emSens(depths, 0.32, 'hcp', hx=1)
-#
-# fig, ax = plt.subplots()
-# ax.plot(cs1, -depths, '-')
-# ax.plot(cs2, -depths, '--')
-# ax.plot(cs1, -depths+1, ':')
-# fig.show()
-
-
 def forward1d_full(cond, depths, s, cpos, hx=None, rescaled=False):
     if hx is None:
         hx = np.zeros(len(s))
     if len(cond.shape) > 1:
-        #        print('WARNING : need 1 dimension matrix for forward model')
         cond = cond.flatten()
     if depths[0] != 0:
         print("ERROR: first depth should be zero, will add it for you")
         depths = np.r_[0, depths]
     if len(depths) != len(cond):
         raise ValueError("forward1d_full: unmatching depths and conds")
-        return
     if np.sum(depths < 0) > 0:
         print("ERROR: depth contains negative depth. Please input only positive depth")
         return np.ones(len(s)) * np.nan
@@ -592,12 +578,6 @@ def forward1d_full(cond, depths, s, cpos, hx=None, rescaled=False):
     return out
 
 
-# test code
-# app1 = forward1d_full(np.array([10,30]),[1],[0.32],['hcp'], hx=[1])
-# app2 = forward1d_full(np.array([0,10,30]),[1,2],[0.32],['hcp'], hx=[0])
-# print(app1, app2)
-
-
 def fCS(cond, depths, s, cpos, hx=0, rescaled=False):
     """Use the cumulative sensitivity function of McNeil 1980."""
     if len(cond) - 1 != len(depths):
@@ -605,7 +585,6 @@ def fCS(cond, depths, s, cpos, hx=0, rescaled=False):
     if len(s) != len(cpos):
         raise ValueError("len(s) should be equal to len(cpos).")
     if depths[0] != 0:
-        #        print('add 0 for you')
         depths = np.r_[0, depths]  # otherwise forward1d_full complains
     if isinstance(hx, int) or isinstance(hx, float):
         hx = np.ones(len(cpos)) * hx
@@ -628,7 +607,7 @@ def emSensAndrade(depths, s, coilPosition, hx=0):
         cs = ((4 * (hx / s) ** 2 + 1) ** 0.5) / (4 * (z + hx / s) ** 2 + 1) ** 0.5
     if coilPosition == "vcp":
         cs = ((4 * (z + hx / s) ** 2 + 1) ** 0.5 - 2 * (z + hx / s)) / (
-            (4 * (hx / s) ** 2 + 1) ** 0.5 - 2 * hx / s
+                (4 * (hx / s) ** 2 + 1) ** 0.5 - 2 * hx / s
         )
     return cs
 
@@ -666,27 +645,7 @@ def buildSecondDiff(ndiag):
     return a
 
 
-# %% test bench
-# sigma = np.array([30, 30, 30, 30]) # layers conductivity [mS/m]
-# depths = np.array([0.3, 0.7, 2]) # thickness of each layer (last is infinite)
-# f = 30000 # Hz frequency of the coil
-# cpos = np.array(['hcp','hcp','hcp','vcp','vcp','vcp']) # coil orientation
-# #cpos = np.array(['hcp','hcp','hcp','prp','prp','prp']) # coil orientation
-# cspacing = np.array([0.32, 0.71, 1.18, 0.32, 0.71, 1.18])
-# cspacing = np.array([1.48, 2.82, 4.49, 1.48, 2.82, 4.49]) # explorer
-
-# print('fCS:', fCS(sigma, depths, cspacing, cpos)) # 333 us
-# print('fMaxwellECa:', fMaxwellECa(sigma, depths, cspacing, cpos)) # 5.7 ms
-# print('fMaxwellQ:', fMaxwellQ(sigma, depths, cspacing, cpos)) # 12 ms
-# print('fCSandrade:', fCSandrade(sigma, depths, cspacing, cpos, hx=0))
-# %timeit getQs(sigma, depths, cspacing, cpos, f) # 5.75 ms (same as fMaxwellECa)
-
-# print('fCS:', fCS(sigma, depths, cspacing, cpos, hx=1))
-# print('fCS:', fCS(sigma, depths, cspacing, cpos, hx=1, rescaled=True))
-# print('fCSandrade:', fCSandrade(sigma, depths, cspacing, cpos, hx=1))
-
-
-# %% usefull functions for the direct inversion
+# %% usefully functions for the direct inversion
 def buildJacobian(depths, s, cpos):
     """Build Jacobian matrix for Cumulative Sensitivity based inversion.
 
@@ -714,6 +673,3 @@ def buildJacobian(depths, s, cpos):
         jacob[i, -1] = cs[-1]
     return jacob
 
-
-# test
-# J = buildJacobian([0.5, 0.7],[0.32, 0.72, 1.14],['vcp','vcp','vcp'])

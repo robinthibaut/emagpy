@@ -40,6 +40,9 @@ from tqdm import tqdm
 
 class HiddenPrints:
     # https://stackoverflow.com/questions/8391411/suppress-calls-to-print-python
+    def __init__(self):
+        pass
+
     def __enter__(self):
         self._original_stdout = sys.stdout
         sys.stdout = open(os.devnull, "w")
@@ -537,7 +540,6 @@ class Problem(object):
             n = self.surveys[0].df.shape[0]
             for s in self.surveys[1:]:
                 if s.df.shape[0] != n:
-                    gamma = 0
                     raise ValueError(
                         "For time-lapse constrain (gamma > 0), all surveys need to have the same length."
                     )
@@ -599,14 +601,13 @@ class Problem(object):
 
         else:
             bounds = None
+
         if ((np.sum(vd) > 0) or (method in mMCMC)) and (bounds is None):
             # for MCMC method or fixed depths, we need bounds
             mdepths = depths0[:-1] + np.diff(depths0) / 2
             bot = np.r_[np.r_[0.2, mdepths], np.ones(nc) * 2]
             top = np.r_[np.r_[mdepths, depths0[-1] + 0.2], np.ones(nc) * 100]
             bounds = list(tuple(zip(bot[np.r_[vd, vc]], top[np.r_[vd, vc]])))
-        # if bounds is not None:
-        # dump('bounds = ' + str(bounds) + '\n')
 
         # gridded parameter search as an inversion method
         if method == "GPS":  # pragma: no cover
@@ -690,9 +691,6 @@ class Problem(object):
         def dataMisfit(p, obs, ini0):
             misfit = fmodel(p, ini0) - obs
             # TODO maybe set default to relative misfit?
-            # if forwardModel == 'Q':
-            # misfit = misfit*1e6 # to help the solver with small Q
-            # misfit = np.abs(misfit/obs)
             if forwardModel == "QP":
                 misfit = np.sqrt(np.imag(misfit) ** 2 + 1e-9 * np.real(misfit) ** 2)
                 # the inphase part makes this misfit quite stable (and so
@@ -925,6 +923,7 @@ class Problem(object):
                         model[j, vc] = out[np.sum(vd):]
                         if forwardModel == "QP":
                             obs = np.sqrt(np.imag(obs) ** 2 + 1e-9 * np.real(obs) ** 2)
+
                         rmse[j] = (
                                 np.sqrt(
                                     np.sum((dataMisfit(out, obs, ini0) / obs) ** 2)
@@ -933,7 +932,7 @@ class Problem(object):
                                 * 100
                         )
                     except Exception as e:
-                        print("Killed")
+                        print(f"Killed - {e}")
                         return
 
                 if method == "Gauss-Newton":
@@ -979,7 +978,7 @@ class Problem(object):
                                 * 100
                         )
                     except Exception as e:
-                        print("Killed")
+                        print(f"Killed - {e}")
                         return
 
                 self.models.append(model)
@@ -991,7 +990,7 @@ class Problem(object):
             if (method != "ANN") & (njobs != 1):
                 try:
                     with HiddenPrints():
-                        outs = Parallel(n_jobs=njobs, verbose=0, backend="loky")(
+                        outs = Parallel(n_jobs=njobs, verbose=5, backend="loky")(
                             delayed(solve)(*a) for a in tqdm(params)
                         )
                 except Exception as e:  # might be when we kill it using UI
@@ -1208,15 +1207,6 @@ class Problem(object):
                 ax.legend()
                 ax.set_xlabel("ECa")
                 ax.set_ylabel("Frequency")
-
-                # plt.figure()
-                # plt.xlabel('Epoch')
-                # plt.ylabel('Mean Square Error')
-                # plt.plot(hist['epoch'], hist['mean_squared_error'],
-                #        label='Train Error')
-                # plt.plot(hist['epoch'], hist['val_mean_squared_error'],
-                #        label = 'Val Error')
-                # plt.legend()
 
             plot_history(history)
 
@@ -1619,7 +1609,6 @@ class Problem(object):
                 noise=0.0,
             )
             eca = np.dstack([df.values for df in dfs])  # Nsample x Ncoils x Nprofiles
-            # sens = eca[:-1,:,:] / eca[-1,:,:][None,:,:] - 1 # dividing by ref (undisturbed ECa)
             sens = (
                     eca[:-1, :, :] - eca[-1, :, :][None, :, :]
             )  # subtracting the ref ECa (slighly better up to 1e-16)

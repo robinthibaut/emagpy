@@ -424,7 +424,7 @@ class Problem(object):
                 - FSeq : Full Maxwell solution without LIN approximation (see Andrade et al., 2016)
         method : str, optional
             Name of the optimization method either L-BFGS-B, TNC, CG or Nelder-Mead
-            to be passed to `scipy.optimize.minmize()` or ROPE, SCEUA, DREAM, MCMC for
+            to be passed to `scipy.optimize.minimize()` or ROPE, SCEUA, DREAM, MCMC for
             a MCMC-based solver based on the `spotpy` Python package.
             Alternatively 'ANN' can be used (requires tensorflow), it will train
             an artificial neural network on synthetic data and use it for inversion.
@@ -438,7 +438,7 @@ class Problem(object):
         alpha : float, optional
             Smoothing factor for the inversion.
         beta : float, optional
-            Smoothing factor for neightbouring profile.
+            Smoothing factor for neighbouring profile.
         gamma : float, optional
             Smoothing factor between surveys (for time-lapse only).
         dump : function, optional

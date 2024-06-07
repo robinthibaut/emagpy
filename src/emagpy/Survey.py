@@ -730,7 +730,7 @@ class Survey(object):
         cmap="viridis_r",
         xlab="x",
         ylab="y",
-        levels=[],
+        levels=None,
     ):
         """Display a map of the measurements.
 
@@ -755,6 +755,8 @@ class Survey(object):
         levels list of float, optional
             If `contour == True`, levels are the contour intervals.
         """
+        if levels is None:
+            levels = []
         if coil is None:
             coil = self.coils[0]
         #        if coil == 'all': # trick for ui
@@ -785,7 +787,7 @@ class Survey(object):
             if pts is True:
                 ax.plot(x, y, "k+")
         else:
-            cax = ax.scatter(x, y, s=15, c=val, vmin=vmin, vmax=vmax, cmap=cmap)
+            ax.scatter(x, y, s=15, c=val, vmin=vmin, vmax=vmax, cmap=cmap)
         ax.set_xlabel(xlab)
         ax.set_ylabel(ylab)
         if len(x) > 0:

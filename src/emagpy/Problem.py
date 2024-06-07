@@ -579,7 +579,7 @@ class Problem(object):
                 - FSeq : Full Maxwell solution without LIN approximation (see Andrade et al., 2016)
         method : str, optional
             Name of the optimization method either L-BFGS-B, TNC, CG or Nelder-Mead
-            to be passed to `scipy.optimize.minimize()` or ROPE, SCEUA, DREAM, MCMC for
+            to be passed to `scipy.optimize.minimize(0)` or ROPE, SCEUA, DREAM, MCMC for
             a MCMC-based solver based on the `spotpy` Python package.
             Alternatively 'ANN' can be used (requires tensorflow), it will train
             an artificial neural network on synthetic data and use it for inversion.
@@ -2598,7 +2598,7 @@ class Problem(object):
         if rmse:
             ax2 = ax.twinx()
             ax2.plot(x[:-1] + np.diff(x) / 2, self.misfits[index], "kx-")
-            ax2.set_ylabel("RMSPE [%]")
+            ax2.set_ylabel("RMSE [%]")
 
         if errorbar or overlay:
             vd = [not depth for depth in self.fixedDepths]  # variable depths
@@ -2975,7 +2975,7 @@ class Problem(object):
                 self.models[i] = self.models[i] - self.models[ref]
 
     def getRMSE(self, forwardModel=None):
-        """Returns RMSPE for all coils (columns) and all surveys (row) as
+        """Returns RMSE for all coils (columns) and all surveys (row) as
         percentage.
 
         np.sqrt(np.sum(((sim-obs)/obs)**2)/len(obs))*100
@@ -3009,6 +3009,36 @@ class Problem(object):
             dfrmse.loc[i, "all"] = rmse(simECa, obsECa)
 
         return dfrmse
+
+    def getObSim(self, index=0, forwardModel=None):
+        """Get the observed/simulated data misfit.
+
+        Parameters
+        ----------
+        index : int, optional
+            Index of the survey to plot.
+        forwardModel : str, optional
+            Type of forward model:
+                - CS : Cumulative sensitivity (default)
+                - FS : Full Maxwell solution with low-induction number (LIN) approximation
+                - FSeq : Full Maxwell solution without LIN approximation (see Andrade 2016)
+
+            If `None` (default), the forward model used for the inversion is used.
+
+        Returns
+        -------
+        """
+
+        if forwardModel is None:
+            forwardModel = self.forwardModel
+
+        dfsForward = self.forward(forwardModel=forwardModel)
+        survey = self.surveys[index]
+        coils = survey.coils
+        obsECa = survey.df[coils].values
+        simECa = dfsForward[index][coils].values
+
+        return obsECa, simECa
 
     def showMisfit(self, index=0, forwardModel=None, ax=None):
         """Show Misfit after inversion.
@@ -3086,7 +3116,7 @@ class Problem(object):
             vmax = np.nanpercentile(obsECa.flatten(), 95)
         if ax is None:
             fig, ax = plt.subplots()
-        ax.set_title("RMSPE: {:.3f} %".format(rmse))
+        ax.set_title("RMSE: {:.3f} %".format(rmse))
         ax.plot(obsECa, simECa, ".")
         ax.plot([vmin, vmax], [vmin, vmax], "k-", label="1:1")
         ax.set_xlim([vmin, vmax])

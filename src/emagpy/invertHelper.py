@@ -13,19 +13,18 @@ the quadrature (imaginary part).
 """
 # from numba import njit, jit
 import os
-import numpy as np
 
+import numpy as np
+# from hankel import HankelTransform
+from scipy import special, integrate
 # import matplotlib.pyplot as plt
 # from multiprocessing import Pool, Manager
 from scipy.constants import mu_0
-
-# from hankel import HankelTransform
-from scipy import special, integrate
-from scipy.optimize import newton, brent, minimize_scalar, minimize, curve_fit
+from scipy.optimize import newton
 
 # useful functions for Hankel transform
 
-# load this important variables once (to speed up) -> do not overwrite them !
+# load this important variable once (to speed up) -> do not overwrite them!
 dirname = os.path.dirname(__file__)
 hankel_w0 = np.loadtxt(os.path.join(dirname, "j1_140.txt"))
 hankel_w1 = np.loadtxt(os.path.join(dirname, "j0_120.txt"))
@@ -40,29 +39,17 @@ def func_hankel(typ, K, r):
         a = -8.3885
         s = 0.0904
         i = np.arange(0, 120).reshape((1, 120))
-        #        w = np.loadtxt('j0_120.txt')
         w = hankel_w0
     elif typ == 1:
         a = -7.9100
         s = 0.0880
         i = np.arange(0, 140).reshape((1, 140))
-        #        w = np.loadtxt('j1_140.txt')
         w = hankel_w1
     lamb = (
             1 / r * 10 ** (a + (i - 1) * s)
     )  # lambda here is not the frequency just your integral variable
-    #    K0 = np.exp(-lamb0*(z+htx)+getRTE(lamb0)*np.exp(lamb0*(z-htx)))*lamb0
     hankel = np.sum(K(lamb) * w) / r
     return hankel
-
-
-# def func_hankel2(nu, f, s, N=140, h=0.03):
-#     """ This one is from hankel python package and allow to
-#     adjust N and h.
-#     """
-#     ht = HankelTransform(nu, N, h) # for HCP h=0.2 works well
-#     Fk = ht.transform(f, k=s)
-#     return Fk[0]
 
 
 def func_hankel3(nu, f, s):
@@ -95,9 +82,6 @@ def func_hankel5(typ, K, r):  # prefered one as the step is not linear >< hankel
 func_hankel and func_hankel5 do not contains the multiplication by lambda in
 in their kernel function. This has to be added after.
 """
-
-
-# useful functions for full Maxwell
 
 
 def getR0_1(lamb, sigg, f, d):
@@ -176,30 +160,6 @@ def getR0_2(lamb, sigg, f, d):
     return R[0]
 
 
-# %timeit getR0_2(1, np.array([60,70,60]), 30000, np.array([0.3, 0.5]))
-# 53 us
-
-# @jit
-# def foo(sigg, d, lamb):
-#    sigma = np.array([0] + sigg)
-#    h = np.array([0] + d + [0])
-#    gamma = np.sqrt(lamb**2 + 1j*2*np.pi*f*mu_0*sigma)
-#    return gamma
-#
-# %timeit foo([10, 20], [2], 0.3)
-##foo.inspect_types()
-
-
-# test
-# %timeit print(getR0_1(1, [60,70,60], 30000, [0.3, 0.5])) # very good exactly the same !
-# print(getR0_2(1, np.array([60,70,60]), 30000, np.array([0.3, 0.5])))
-# if homogenous, only R0 is != 0, all other are = 0 because there
-# is no reflexion if the layers have the same conductivity.
-
-# getRn = np.vectorize(getR0_1)
-# getRn = np.vectorize(getR0_2)
-
-
 def getRn(lamb, sig, f, h, getR0=getR0_2):
     return np.array([getR0(l, sig, f, h) for l in lamb.flatten()])
 
@@ -222,6 +182,9 @@ def getQhomogeneous(cpos, s, sig, f):
                 - 3 / (g * s) ** 2
                 + (3 + 3 * g * s + (g * s) ** 2) * np.exp(-g * s) / (g * s) ** 2
         )
+    else:
+        raise ValueError("cpos should be either hcp or vcp")
+
     return Q
 
 
@@ -248,6 +211,9 @@ def getQ(cpos, s, sig, f, h, typ=5):
 
             def func(lamb):
                 return getRn(lamb, sig, f, h) * lamb
+
+    else:
+        raise ValueError("cpos should be either hcp or vcp")
 
     dicoHankel = {
         1: func_hankel,
@@ -281,33 +247,6 @@ def eca2Q(eca, s, f=30000):
     return eca / (4 / (2 * np.pi * f * mu_0 * s ** 2))
 
 
-# test
-# sig = np.array([60,60,60])*1e-3
-# f = 30000
-# h = [0.3, 0.5]
-# s = 0.32
-# cpos = 'hcp'
-# def func(lamb):
-#    return getRn(lamb, sig, f, h)*lamb**2
-# app = -4*s/(2*np.pi*30000*mu_0)*np.imag(func_hankel5(0, func, s))
-# print(app*1e3)
-# print(Q2eca(getQ(cpos, s, sig, f, h), s, f)*1e3) # pk
-
-
-# test homogeneous
-# sigH = 60*1e-3 # S/m
-# sig = np.ones(3)*sigH
-# f = 30000
-# h = [0.3, 0.5]
-# s = 0.71
-# cpos = 'hcp'
-# print(getQ(cpos, s, sig, f, h))
-# print(getQhomogeneous(cpos, s, sigH, f)) # not quite...
-# print(Q2eca(getQ(cpos, s, sig, f, h), s, f)*1e3)
-# print(Q2eca(getQhomogeneous(cpos, s, sigH, f), s, f)*1e3) # not quite...
-#
-
-
 # --------------------- getQ2 faster
 # @njit
 def getRn2(lamb, sigg, f, d):  # compute reflexion coefficients
@@ -333,12 +272,6 @@ def getRn2(lamb, sigg, f, d):  # compute reflexion coefficients
     return R[0, :]
 
 
-# test code
-# getR0_2(1, np.array([60,70,60]), 30000, np.array([0.3, 0.5]))
-# lamb = hankel5_lamb/0.32
-# %timeit getRn2(lamb, np.array([60,70,60]), 30000, np.array([0.3, 0.5]))
-
-
 # @njit
 def getQ2(cpos, s, sig, f, h):
     lamb = hankel5_lamb / s  # normalized to be used in Hankel
@@ -356,7 +289,7 @@ def getQ2(cpos, s, sig, f, h):
         w = hankel5_w1  # for Bessel function of order 0
         K = getRn2(lamb, sig, f, h) * lamb ** 2  # kernel with reflexion coef
         hankel = np.sum(w * K / s)  # hankel transform
-        return - s ** 3 * hankel
+        return -(s ** 3) * hankel
 
 
 def getQs(cond, depths, s, cpos, f, hx=0):
@@ -453,16 +386,21 @@ def fMaxwellQ(cond, depths, s, cpos, hx=0, f=30000, maxiter=50):
         Qobs = np.imag(getQ2(cpos[i], s[i], sig, f[i], thick))
 
         if cpos[i] == "prp":  # We don't have analytical for PRP
+
             def objfunc(asig):
                 sigg = np.full(len(cond), asig)
                 Qmod = np.imag(getQ2(cpos[i], s[i], sigg, f[i], thick))
                 return np.abs(Qmod - Qobs)
+
         else:  # Analytical is much faster
+
             def objfunc(asig):
                 Qmod = np.imag(getQhomogeneous(cpos[i], s[i], asig, f[i]))
                 return np.abs(Qmod - Qobs)
 
-        sig0 = Q2eca(getQ2(cpos[i], s[i], cond, f[i], thick), s[i], f[i])  # Initial guess
+        sig0 = Q2eca(
+            getQ2(cpos[i], s[i], cond, f[i], thick), s[i], f[i]
+        )  # Initial guess
 
         try:
             tol = 1e-3  # Tolerance for convergence
@@ -473,25 +411,6 @@ def fMaxwellQ(cond, depths, s, cpos, hx=0, f=30000, maxiter=50):
             response[i] = np.nan  # Indicate failure to converge
 
     return response
-
-
-# test
-# cpos = 'hcp'
-# s = 0.32
-# cond = np.array([60,60,60])*1e-3 # [S/m]
-# f = 30000
-# h = [0.4, 0.7]
-# print(getQ(cpos, s, cond, f, h))
-# print(getQhomogeneous(cpos, s, cond, f))
-# Qobs = np.imag(getQ(cpos, s, cond, f, h))
-# def objfunc(sig):
-#    sigg = np.ones(len(cond))*sig
-#    Qmod = np.imag(getQ(cpos, s, sigg, f, h))
-#    return np.abs(Qmod - Qobs)
-# sig0 = Q2eca(getQ(cpos, s, cond, f, h), s, f) # still in S/m
-# print(sig0)
-# zero = newton(objfunc, sig0)*1e3 # back to mS/m
-# print(zero)
 
 
 def Q2eca2(Qobs, depths, cpos, s, f=30000, hx=None, maxiter=50):
@@ -515,22 +434,12 @@ def Q2eca2(Qobs, depths, cpos, s, f=30000, hx=None, maxiter=50):
             return np.abs(Qmod - Qobs)
 
     sig0 = Q2eca(0 + 1j * Qobs, s)  # still in S/m
-    #    sig0 = eca0[i]
-    #    res = minimize(objfunc, x0=sig0, method='BFGS')
-    #    zero = res.x[0]*1e3
-    #    zero = brent(objfunc, brack=(sig0*0.8, sig0, sig0*1.2))*1e3
     zero = newton(objfunc, sig0, maxiter=maxiter)
     return zero
 
 
-# test
-# Qobs = getQ2('hcp',0.71, np.array([20,20])*1e-3, 30000, np.array([0.5]))
-# print(Q2eca(Qobs, 0.71)*1e3)
-# print(Q2eca2(Qobs, np.array([0.5]), 'hcp', 0.71, f=30000 )*1e3)
-
-
 def emSens(depths, s, coilPosition, hx=0, rescaled=False):
-    """return mcNeil senstivity values
+    """return mcNeil sensitivity values
 
     depths (positive and increasing with depth)
     s = distance between coils
@@ -542,10 +451,12 @@ def emSens(depths, s, coilPosition, hx=0, rescaled=False):
     # from mcNeil 1980 in Callegary2007
     if coilPosition == "hcp":
         cs = 1 / np.sqrt(4 * z ** 2 + 1)
-    if coilPosition == "vcp":
+    elif coilPosition == "vcp":
         cs = np.sqrt(4 * z ** 2 + 1) - 2 * z
-    if coilPosition == "prp":
+    elif coilPosition == "prp":
         cs = 1 - 2 * z / np.sqrt(4 * z ** 2 + 1)
+    else:
+        raise ValueError("coilPosition should be either hcp, vcp or prp")
 
     if (
             hx != 0
@@ -571,7 +482,6 @@ def forward1d_full(cond, depths, s, cpos, hx=None, rescaled=False):
     out = np.zeros(len(s)) * np.nan
     for i in range(0, len(out)):
         cs = emSens(depths, s[i], cpos[i], hx[i], rescaled=rescaled)
-        #        print('CS = ', np.sum(np.diff(cs)))
         appcond = np.sum(cond[:-1] * (cs[:-1] - cs[1:]))
         appcond = appcond + cond[-1] * (cs[-1])
         out[i] = appcond
@@ -609,6 +519,9 @@ def emSensAndrade(depths, s, coilPosition, hx=0):
         cs = ((4 * (z + hx / s) ** 2 + 1) ** 0.5 - 2 * (z + hx / s)) / (
                 (4 * (hx / s) ** 2 + 1) ** 0.5 - 2 * hx / s
         )
+    else:
+        raise ValueError("coilPosition should be either hcp or vcp")
+
     return cs
 
 
@@ -617,10 +530,8 @@ def fCSandrade(cond, depths, s, cpos, hx=None):
         hx = 0
     hx = np.ones(len(s)) * hx
     if len(cond.shape) > 1:
-        #        print('WARNING : need 1 dimension matrix for forward model')
         cond = cond.flatten()
     if depths[0] != 0:
-        #        print('ERROR: first depth should be zero, will add it for you')
         depths = np.r_[0, depths]
     if len(depths) != len(cond):
         print("ERROR: unmatching depths and conds")
@@ -645,31 +556,44 @@ def buildSecondDiff(ndiag):
     return a
 
 
-# %% usefully functions for the direct inversion
+# %% useful functions for the direct inversion
 def buildJacobian(depths, s, cpos):
-    """Build Jacobian matrix for Cumulative Sensitivity based inversion.
+    """
+    Build Jacobian matrix for Cumulative Sensitivity based inversion.
 
     Parameters
     ----------
-    cond : array
-        Conductivities of the model layer.
-    depths : array
+    depths : array-like
         Depths of the lower layer bound.
-    s : array
+    s : array-like
         Array of coil separation [m].
-    cpos : array of str
+    cpos : array-like of str
         Array of coil orientation.
 
     Returns
     -------
-    A matrix with each row per coil spacing/orientation and each column per
-    model parameters (per layer).
+    jacob : ndarray
+        A matrix with each row per coil spacing/orientation and each column
+        per model parameters (per layer).
     """
-    depths = np.r_[0, depths]
-    jacob = np.zeros((len(s), len(depths))) * np.nan
-    for i in range(0, len(s)):
+    # Input validation
+    if len(s) != len(cpos):
+        raise ValueError("The length of 's' must be equal to the length of 'cpos'.")
+    if not all(isinstance(c, str) for c in cpos):
+        raise ValueError(
+            "'cpos' must be an array of strings representing coil orientations."
+        )
+
+    # Add zero depth at the top layer
+    depths = np.concatenate(([0], depths))
+
+    # Initialize the Jacobian matrix
+    jacob = np.zeros((len(s), len(depths)))
+
+    # Compute the Jacobian matrix
+    for i in range(len(s)):
         cs = emSens(depths, s[i], cpos[i])
         jacob[i, :-1] = cs[:-1] - cs[1:]
         jacob[i, -1] = cs[-1]
-    return jacob
 
+    return jacob

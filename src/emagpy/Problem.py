@@ -16,8 +16,21 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 import numpy as np
 import pandas as pd
-from emagpy.src.emagpy.Survey import Survey, idw, griddata, clipConcaveHull, tricontourf_clipped
+# for parallel computing
+from joblib import Parallel, delayed
+from matplotlib.collections import PolyCollection
+from matplotlib.colors import ListedColormap
+from scipy.optimize import minimize
+from scipy.stats import linregress
+from tqdm import tqdm
 
+from emagpy.src.emagpy.Survey import (
+    Survey,
+    idw,
+    griddata,
+    clipConcaveHull,
+    tricontourf_clipped,
+)
 # emagpy custom import
 from emagpy.src.emagpy.invertHelper import (
     fCS,
@@ -28,14 +41,6 @@ from emagpy.src.emagpy.invertHelper import (
     getQs,
     eca2Q,
 )
-
-# for parallel computing
-from joblib import Parallel, delayed
-from matplotlib.collections import PolyCollection
-from matplotlib.colors import ListedColormap
-from scipy.optimize import minimize
-from scipy.stats import linregress
-from tqdm import tqdm
 
 
 class HiddenPrints:
@@ -50,6 +55,156 @@ class HiddenPrints:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
         sys.stdout = self._original_stdout
+
+
+def resMod2EC(
+        fnameECa, fnameResMod, meshType=None, binInt=None, nbins=None, calib=None
+):
+    """Convert mesh data to dfec array to be used in calibrate.
+
+    Parameters
+    ----------
+    fnameECa : str
+        Path of the .csv file with the ECa data collected on the calibration points.
+    fnameResMod : str
+        Path of the .dat file with the restivity model.
+    binInt : int, optional
+        Bin interval in metres, over which to average resistivity model.
+    nbins : int, optional
+        Number of bins to average the resistivity model over.
+    calib str, optional
+        If specified, will apply a GF correction. Note that the main dataset
+        needs to be corrected as well.
+    """
+
+    # import data
+    survey = Survey(fnameECa)
+    if calib is not None:
+        survey.gfCorrection(calib=calib)
+    # if meshType is None:
+    #     print('Please specify meshType, either "tri" or "quad"')
+
+    survey = Survey(fnameECa)
+    eca = survey.df[["x"] + survey.coils].values
+
+    resmod = pd.read_table(fnameResMod, sep="\s+", header=None).values
+
+    minX = np.min(eca[:, 0])
+    maxX = np.max(eca[:, 0])
+
+    if nbins is None:
+        if binInt is None:
+            nbins = int(eca.shape[0] - 1)
+        else:
+            nbins = int((maxX - minX) // binInt)
+
+    if nbins > eca.shape[0]:
+        raise ValueError(
+            "You have specified {:d} bins but you only have {:d} data points.".format(
+                nbins, eca.shape[0]
+            )
+        )
+
+    if meshType is not None:
+        if meshType != "quad" and meshType != "tri":
+            print("Please specify mesh type as 'tri' or 'quad'.")
+            return
+
+    # crop ert mesh based on location of EMI calibration data
+    resmod = resmod[np.where((resmod[:, 0] >= minX) & (resmod[:, 0] <= maxX)), :][0]
+
+    if meshType == "quad":
+        print("Mesh is quadrilateral.")
+        # check if topo in mesh
+        maxTopo = max(resmod[:, 1])
+        x = resmod[:, 0]
+
+        if len(np.where(resmod[:, 1] == maxTopo)[0]) < len(np.unique(x)):
+            print("Mesh has topograpy and will be flattened.")
+
+            # get x location of maximum topography
+            xMaxTopo = x[np.where(resmod[:, 1] == maxTopo)]
+
+            # determine new z values for mesh
+            newZ = resmod[np.where(resmod[:, 0] == xMaxTopo), 1] - maxTopo
+
+            # count number of layers for each x position along transect
+            uniqueX = np.unique(x)
+            nlayers = []
+            for i in range(0, len(uniqueX)):
+                nlayers = np.append(
+                    nlayers,
+                    resmod[np.where(resmod[:, 0] == uniqueX[i]), 1].shape[1],
+                )
+
+            # normalize layer depths for each x position
+            for i in range(0, len(uniqueX)):
+                resmodCol = resmod[np.where(resmod[:, 0] == uniqueX[i]), :]
+                shiftZ = np.max(resmodCol[0][:, 1]) - maxTopo
+                resmod[np.where(resmod[:, 0] == uniqueX[i]), 1] = (
+                        resmod[np.where(resmod[:, 0] == uniqueX[i]), 1] - shiftZ
+                )
+
+            resmod[:, 1] = resmod[:, 1] - maxTopo
+
+            # model needs homogenous layer number, layers exceeding minimum number of layers deleted
+            nlayer = np.min(nlayers)
+            resmod = resmod[np.where(resmod[:, 1] > np.mean(newZ[0][::-1][:2])), :][0]
+            newZ = newZ[0][: int(nlayer)]
+            for i in range(0, len(uniqueX)):
+                resmod[np.where(resmod[:, 0] == uniqueX[i]), 1] = (
+                    newZ  # this is done to avoid errors arising from rounding
+                )
+
+    if meshType == "tri":
+        print(
+            "Mesh is triangular, topography shift is not implement and will be assumed negligible."
+        )
+
+    # below is common to tri and quad mesh
+    # TODO method define upper surface of mesh when topography is involved
+    x = resmod[:, 0]
+    z = resmod[:, 1]
+    res = resmod[:, 2]
+    xi = np.arange(np.min(x), np.max(x), 0.25)
+    zi = np.linspace(np.min(z), np.max(z), 15)  # 15 layers in Y
+    xi, zi = np.meshgrid(xi, zi)
+    resi = griddata((x, z), res, (xi, zi), method="linear")  # linear interpolation
+    x = np.unique(xi)
+    z = np.unique(zi)
+    resmodxz = np.array(np.meshgrid(x, z)).T.reshape(-1, 2)
+    res = resi.T.flatten()
+    resmod = np.concatenate((resmodxz, res[:, None]), axis=1)
+    resmod = resmod[~np.isnan(resmod[:, 2]), :]
+
+    midDepths = -np.unique(resmod[:, 1])
+    # compute mean EC for each bin
+    bins = np.linspace(minX, maxX, nbins + 1)
+    binID = np.digitize(resmod[:, 0], bins + 1)
+    ec = np.empty((nbins, len(midDepths)))
+    midDepthsr = midDepths[::-1]
+    for i in range(0, nbins):
+        for j in range(0, len(midDepths)):
+            idepth = resmod[:, 1] == -midDepthsr[j]
+            ibins = binID == i + 1
+            ec[i, j] = 1000 / np.mean(resmod[idepth & ibins, 2])
+
+    # compute mean ECa for each bin
+    binID = np.digitize(np.unique(eca[:, 0]), bins)
+    depths = (midDepthsr[1:] + midDepthsr[:-1]) / 2
+    eca2 = np.zeros((nbins, eca.shape[1]))
+    for i in range(0, nbins):
+        ie = binID == i + 1
+        if np.sum(ie) > 0:
+            eca2[i, :] = np.mean(eca[ie, :], axis=0)
+    eca2 = np.array(eca2)
+    eca2 = eca2[~np.isnan(eca2).any(axis=1)]
+    eca2[np.all(eca2 == 0, axis=1)] = np.nan
+    dist = (bins[1:] + bins[:-1]) / 2
+
+    # ec is electrical conductivtiy from ERT model, depths are depths from resmodel, eca2 is eca data in same
+    # dimension as ec
+    return ec, depths, eca2[:, 1:], dist
 
 
 class Problem(object):
@@ -208,9 +363,9 @@ class Problem(object):
             If specified, a conversion from NMEA string in 'latitude' and 'longitude'
             columns will be performed according to EPSG code: e.g. 'EPSG:3395'.
         unit : str, optional
-            Unit for the _quad and _inph columns. By default assume to be in ppt
+            Unit for the _quad and _inph columns. By default, assume to be in ppt
             (part per thousand). ppm (part per million) can also be specified. Note
-            that ECa columns, if present are assumed to be in mS/m.
+            that ECa columns, if present, are assumed to be in mS/m.
         """
         # import all surveys
         if targetProjection is not None:
@@ -308,11 +463,11 @@ class Problem(object):
         F-1m on CMD Explorer and Mini-Explorer to LIN ECa.
 
         GF instruments directly map the quadrature values measured to ECa using
-        a linear calibration. This allows to have ECa values representative of
-        the ground EC even when the device is operated at 1 m above the ground
+        a linear calibration. This allows having ECa values representative of
+        the ground EC even when the device is operated at 1 m above the ground,
         for instance. However, this calibration gets in the way when modelling
         the EM response based on physical equations for the inversion. Hence,
-        we recommend to apply a correction and convert back the 'calibrated ECa'
+        we recommend applying a correction and convert back the 'calibrated ECa'
         to LIN ECa. This function contains the retro-engineered coefficients
         of the GF calibration. The ECa values are first uncalibrated back to
         quadrature values and then converted back to ECa using the LIN approximation.
@@ -334,9 +489,7 @@ class Problem(object):
         # sort all dataframe (should already be the case)
         dfs2 = []
         for df in dfs:
-            dfs2.append(
-                df
-            )  # .sort_values(by=['a','b','m','n']).reset_index(drop=True))
+            dfs2.append(df)
 
         # concatenate columns of string
         def cols2str(cols):
@@ -408,7 +561,6 @@ class Problem(object):
             dump=None,
             bnds=None,
             options=None,
-            Lscaling=False,
             rep=100,
             noise=0.05,
             nsample=100,
@@ -457,14 +609,11 @@ class Problem(object):
             (layer1_ec_min, layer1_ec_max),	(layer2_ec_min, layer2_ec_max),	(layer3_ec_min, layer3_ec_max)].
         options : dict, optional
             Additional dictionary arguments will be passed to `scipy.optimize.minimize()`.
-        Lscaling : bool, optional
-            **Experimental feature** If True the regularization matrix will be weighted based on
-            centroids of layers differences.
         rep : int, optional
-            Number of sample for the MCMC-based methods.
+            Number of samples for the MCMC-based methods.
         noise : float, optional
-            If ANN method is used, describe the noise applied to synthetic data
-            in training phase. Values between 0 and 1 (100% noise).
+            If ANN method is used, describes the noise applied to synthetic data
+             in the training phase. Values between 0 and 1 (100% noise).
         nsample : int, optional
             If ANN method is used, describe the size of the synthetic data
             generated in trainig phase.
@@ -475,7 +624,7 @@ class Problem(object):
         njobs : int, optional
             If -1 all CPUs are used. If 1 is given, no parallel computing code
             is used at all, which is useful for debugging. For n_jobs below -1,
-            (n_cpus + 1 + n_jobs) are used. Thus for n_jobs = -2, all CPUs
+            (n_cpus + 1 + n_jobs) are used. Thus, for n_jobs = -2, all CPUs
             but one are used.
         """
         if options is None:
@@ -530,7 +679,6 @@ class Problem(object):
                 print(x, end="")
 
         nc = self.conds0[0].shape[1]  # number of layers
-        nd = self.depths0[0].shape[1]  # number of depths
         vd = [not depth for depth in self.fixedDepths]  # variable depths
         vc = [not cond for cond in self.fixedConds]  # variable conductivity
         depths0 = self.depths0[0][0, :]  # approximation
@@ -553,14 +701,18 @@ class Problem(object):
 
         # define the forward model
         def fmodel(p, ini0):  # p contains first the depths then the conductivities
+            """ """
             depth = ini0[0].copy()
             cond = ini0[1].copy()
+
             if np.sum(vd) > 0:
                 depth[vd] = p[: np.sum(vd)]
             if np.sum(vc) > 0:
                 cond[vc] = p[np.sum(vd):]
+
             if forwardModel == "CS":
                 return fCS(cond, depth, self.cspacing, self.cpos, hx=self.hx)
+
             elif forwardModel == "FSlin":
                 return fMaxwellECa(
                     cond, depth, self.cspacing, self.cpos, f=self.freqs, hx=self.hx
@@ -666,45 +818,17 @@ class Problem(object):
             )
             dump("Finish training the network ({:.2f}s)\n".format(time.time() - t0))
 
-        # build roughness matrix
-        L = buildSecondDiff(nc)  # L is used inside the smooth objective fct
-        # each constrain is proportional to the distance between the centroid of the two layers
-        if nd > 1:
-            centroids = np.r_[depths0[0] / 2, depths0[:-1] + np.diff(depths0) / 2]
-            if nd > 2:
-                distCentroids = np.r_[
-                    centroids[1] - centroids[0],
-                    centroids[2:] - centroids[:-2],
-                    centroids[-1] - centroids[-2],
-                    1,
-                ]  # last layer is infinite so we don't apply any weights
-            else:
-                distCentroids = np.r_[
-                    centroids[1] - centroids[0], centroids[-1] - centroids[-2], 1
-                ]
-            if Lscaling is True:
-                L = L / distCentroids[:, None]
-
-        # TODO what for 3 layers ? sum of those distances ?
-
         # data misfit
         def dataMisfit(p, obs, ini0):
             misfit = fmodel(p, ini0) - obs
-            # TODO maybe set default to relative misfit?
             if forwardModel == "QP":
                 misfit = np.sqrt(np.imag(misfit) ** 2 + 1e-9 * np.real(misfit) ** 2)
-                # the inphase part makes this misfit quite stable (and so
-                # difficult for solver to optimize), adding a coefficient helps
-                # misfit = np.imag(misfit)
-            #     misfit[len(misfit)//2:] *= 1e5 # TODO to be tested out
             return misfit
-
-            # model misfit only for conductivities not depths
 
         def modelMisfit(p):
             cond = p[
                    : np.sum(vc)
-                   ]  # smoothing only for parameters elements (depth or cond)
+                   ]  # smoothing only for parameter elements (depth or cond)
             return cond[:-1] - cond[1:]
 
         if regularization == "l1":
@@ -762,7 +886,7 @@ class Problem(object):
                     return spotpy.parameter.generate(self.params)
 
                 def simulation(self, vector):
-                    x = np.array(vector)  # this are actually the parameters
+                    x = np.array(vector)  # these are actually the parameters
                     return x
 
                 def evaluation(
@@ -771,10 +895,9 @@ class Problem(object):
                     observations = self.obsVals.flatten()
                     return observations
 
-                def objectivefunction(self, simulation, evaluation, params=None):
+                def objectivefunction(self, simulation, evaluation):
                     # simulation is actually parameters, the simulation (forward model)
                     # is done inside the objective function itself
-                    # val = -spotpy.objectivefunctions.rmse(evaluation, fmodel(simulation, self.ini0))
                     val = -objfunc(
                         simulation,
                         evaluation,
@@ -791,10 +914,13 @@ class Problem(object):
 
         # define optimization function
         def solve(obs, pn, spn, alpha, beta, gamma, ini0):
+            """ """
+
             if self.ikill is True:
                 raise ValueError(
                     "killed"
                 )  # https://github.com/joblib/joblib/issues/356
+
             if method in mMinimize:  # minimize
                 x0 = np.r_[ini0[0][vd], ini0[1][vc]]
                 res = minimize(
@@ -806,6 +932,7 @@ class Problem(object):
                     options=options,
                 )
                 out = res.x
+
             elif method in mMCMC:  # MCMC based methods
                 spotpySetup = spotpy_setup(
                     obs, bounds, pn, spn, alpha, beta, gamma, ini0, fmodel
@@ -824,14 +951,12 @@ class Problem(object):
                 # because the save file (stdout) is one and close in //
                 sampler.sample(
                     rep
-                )  # this is outputing too much so we use hiddenprints() context
+                )  # this is outputing too much, so we use hiddenprints() context
                 results = np.array(sampler.getdata())
                 cols = ["parx{:d}".format(a) for a in range(len(bounds))]
                 ibest = np.argmin(np.abs(results["like1"]))  # lowest misfit sampled
                 outval = np.array([results[col][ibest] for col in cols])
-                # actually the mode is not a such a good estimate
-                # samples = [results[col] for col in cols]
-                # outval = np.array([a[np.argmax(gaussian_kde(a)(a))] for a in samples])
+
                 ie = np.abs(results["like1"]) < np.nanpercentile(
                     np.abs(results["like1"]), 10
                 )
@@ -847,7 +972,7 @@ class Problem(object):
             self.c = 0
             apps = survey.df[self.coils].values  # ECa in mS/m
             inph = survey.df[self.coilsInph].values  # inphase in ppt
-            rmse = np.zeros(apps.shape[0]) * np.nan
+            rmse = np.full(apps.shape[0], np.nan)
             model = self.conds0[i].copy()
             depth = self.depths0[i].copy()
             stds = np.zeros((apps.shape[0], np.sum(vd) + np.sum(vc)))
@@ -938,38 +1063,74 @@ class Problem(object):
                 if method == "Gauss-Newton":
                     try:
                         dump("\r{:d}/{:d} inverted".format(j + 1, nrows))
-                        # compute Jacobian
+
+                        # Compute Jacobian
                         sens = self.computeSens(
                             forwardModel=forwardModel,
-                            coils=None,  # this trigger normal forward modelling
+                            coils=None,  # this triggers normal forward modelling
                             models=[ini0[1][None, :]],
                             depths=[ini0[0][None, :]],
                         )
                         sens = sens[0][:, :, 0]
-                        J = sens / np.sum(sens, axis=0)  # so that sum == 1
+                        J = sens / np.sum(
+                            sens, axis=0
+                        )  # Ensure this is the intended normalization
                         J = J.T
 
                         # Gauss-Newton algorithm
                         cond = np.copy(ini0[1])[:, None]
                         app = obs.copy()
+                        out = np.zeros_like(cond)
 
-                        maxiter = options["maxiter"] if "maxiter" in options else 3
-                        for l in range(
-                                maxiter
-                        ):  # only one iteration as the jacobian doesn't depend on the cond
+                        maxiter = options.get("maxiter", 3)
+                        tol = options.get("tol", 1e-3)
+                        alpha = options.get("alpha", 0.1)  # Regularization parameter
+                        L = options.get(
+                            "L", np.identity(len(cond))
+                        )  # Regularization matrix
+
+                        def aggregate_misfit(misfit_list):
+                            """Aggregate misfit values from all layers."""
+                            return (
+                                    np.sqrt(
+                                        np.sum(
+                                            [np.sum((m / obs) ** 2) for m in misfit_list]
+                                        )
+                                        / len(obs)
+                                    )
+                                    * 100
+                            )
+
+                        prev_misfit = float("inf")
+                        for _ in range(maxiter):  # Iterate Gauss-Newton updates
                             d = -dataMisfit(
                                 cond.flatten(), app, ini0
-                            )  # NOTE we need minus to get the right direction
+                            )  # Ensure correct misfit calculation
                             LHS = np.dot(J.T, J) + alpha * L
                             RHS = np.dot(J.T, d[:, None]) - alpha * np.dot(L, cond)
                             solution = np.linalg.solve(LHS, RHS)
                             cond = cond + solution
                             out = cond.flatten()
 
+                            # Compute current aggregated misfit
+                            current_misfit = aggregate_misfit(d)
+
+                            # Check for convergence using percentage change
+                            if prev_misfit != float("inf"):
+                                percentage_change = np.abs(
+                                    (prev_misfit - current_misfit) / prev_misfit
+                                )
+                                if percentage_change < tol:
+                                    break
+
+                            prev_misfit = current_misfit
+
                         depth[j, vd] = out[: np.sum(vd)]
                         model[j, vc] = out[np.sum(vd):]
+
                         if forwardModel == "QP":
                             obs = np.sqrt(np.real(obs) ** 2 + np.imag(obs) ** 2)
+
                         rmse[j] = (
                                 np.sqrt(
                                     np.sum((dataMisfit(out, obs, ini0) / obs) ** 2)
@@ -977,14 +1138,10 @@ class Problem(object):
                                 )
                                 * 100
                         )
+
                     except Exception as e:
                         print(f"Killed - {e}")
                         return
-
-                self.models.append(model)
-                self.depths.append(depth)
-                self.misfits.append(rmse)
-                self.pstds.append(stds)
 
             # parallel computing with loky backend
             if (method != "ANN") & (njobs != 1):
@@ -997,7 +1154,7 @@ class Problem(object):
                     print("Error in // inversion:", e)
                     return
 
-            # artifical neural network inversion
+            # artificial neural network inversion
             elif method == "ANN":  # pragma: no cover
                 obss = np.vstack([a[0] for a in params])
                 normobss = self.norm(obss)  # normalize data
@@ -1052,10 +1209,10 @@ class Problem(object):
                             )
                             * 100
                     )
-                self.models.append(model)
-                self.depths.append(depth)
-                self.misfits.append(rmse)
-                self.pstds.append(stds)
+            self.models.append(model)
+            self.depths.append(depth)
+            self.misfits.append(rmse)
+            self.pstds.append(stds)
 
     def buildANN(
             self,
@@ -1073,9 +1230,9 @@ class Problem(object):
         Parameters
         ----------
         fmodel : function
-            Function use to generated the synthetic data.
+            Function use to generate the synthetic data.
         bounds : list of tuple
-            List of tuple with the bounds of each parameters to pass to the
+            List of tuple with the bounds of each parameter to pass to the
             `fmodel` function.
         noise : float, optional
             Noise level to apply on the synthetic data generated.
@@ -1151,11 +1308,9 @@ class Problem(object):
 
         self.model = build_model()
 
-        # self.model.summary()
-
         # display training progress by printing a single dot for each completed epoch
         class PrintDot(keras.callbacks.Callback):
-            def on_epoch_end(self, epoch, logs):
+            def on_epoch_end(self, epoch):
                 if epoch % 100 == 0:
                     dump("\n")
                 dump(".")
@@ -1199,7 +1354,7 @@ class Problem(object):
                 mbins = bins[:-1] + np.diff(bins)
                 ax.plot([], [], "k-", label="Observed")
                 ax.plot([], [], "k:", label="Synthetic")
-                for i, c in enumerate(self.coils):
+                for _, c in enumerate(self.coils):
                     freq1, _ = np.histogram(self.surveys[0].df[c].values, bins=bins)
                     freq2, _ = np.histogram(df[c].values, bins=bins)
                     cax = ax.step(mbins, freq1, linestyle="-", label=c)
@@ -1259,7 +1414,7 @@ class Problem(object):
                     app
                 )  # initial EC is the mean of the apparent (doesn't matter)
                 # OR search for best starting model here
-                for l in range(
+                for _ in range(
                         1
                 ):  # only one iteration as the jacobian doesn't depend on the cond
                     d = dataMisfit(cond, app)
@@ -1275,7 +1430,7 @@ class Problem(object):
                     solution = np.linalg.solve(LHS, RHS)
                     cond = (
                             cond + solution
-                    )  # it's an iterative process but it converges in one iteration as it's linear
+                    )  # it's an iterative process, but it converges in one iteration as it's linear
                 out = cond.flatten()
                 model[j, :] = out
                 rmse[j] = (
@@ -1292,19 +1447,19 @@ class Problem(object):
     def tcorrECa(self):  # pragma: no cover
         """Temperature correction based on temperature profile.
         An 'apparent' temperature is computed for each coil configuration
-        using the CS function and the observed ECa is corrected according
+        using the CS function, and the observed ECa is corrected according
         to a 2% increase in EC per degC.
 
         EC_t = EC * (1 - a * (t - tref))
 
-        where a = 0.02 (2% by default) and tref = 20 degC
+        Where a = 0.02 (2% by default) and tref = 20 degC
 
         Note
         ----
         If you plan to invert the data, apply the temperature correction
         AFTER inversion only usin the tcorr() method. If you only plan to use the
         apparent values, then you can use the tcorrECa() functions. Don't use tcorrECa()
-        then invert your data but rather invert you data then apply tcorr().
+        then invert your data but rather invert your data than apply tcorr().
         """
         print("NOT IMPLEMENTED YET")
 
@@ -1317,13 +1472,8 @@ class Problem(object):
 
         EC_t = EC * (1 - a * (t - tref))
 
-        where a = 0.02 (2% by default) and tref = 20 degC
+        Where a = 0.02 (2% by default) and tref = 20 degC
         """
-
-    def write2vtk(self):
-        """Write .vtk cloud points with the inverted models."""
-        for i, m in enumerate(self.models):
-            pass
 
     def rollingMean(self, window=3):
         """Perform a rolling mean on the data.
@@ -1375,7 +1525,7 @@ class Problem(object):
         timef : str, optional
             Time format of the 'time' column of the dataframe (if available).
             To be passed to `pd.to_datetime()`. If `None`, it will be inferred.
-            e.g. '%Y-%m-%d %H:%M:%S'
+            e.g., '%Y-%m-%d %H:%M:%S'
 
         Notes
         -----
@@ -1391,7 +1541,7 @@ class Problem(object):
         Parameters
         ----------
         tolerance : float, optional
-            Minimum distance away previous point in order to be retained.
+            Minimum distance away previous point to be retained.
         """
         for s in self.surveys:
             s.filterRepeated(tolerance=tolerance)
@@ -1440,7 +1590,7 @@ class Problem(object):
             If `None`, then the default attribute of the object will be used (foward
             mode on inverted solution).
             If specified, the coil spacing, orientation and height above the ground
-            will be set. In this case you need to assign at models and depths (full forward mode).
+            will be set. In this case, you need to assign at models and depths (full forward mode).
             The ECa values generated will be incorporated as a new Survey object.
         noise : float, optional
             Percentage of noise to add on the generated apparent conductivities.
@@ -1456,7 +1606,7 @@ class Problem(object):
         -------
         df : pandas.DataFrame
             With the apparent ECa in the same format as input for the Survey class.
-        If `coils` argument is specified a new Survey object will be added as well.
+        If `coils` argument is specified, a new Survey object will be added as well.
         """
         if depths is None:
             depths = []
@@ -1565,7 +1715,7 @@ class Problem(object):
             If `None`, then the default attribute of the object will be used (foward
             mode on inverted solution).
             If specified, the coil spacing, orientation and height above the ground
-            will be set. In this case you need to assign at models and depths (full forward mode).
+            will be set. In this case, you need to assign at models and depths (full forward mode).
             The ECa values generated will be incorporated as a new Survey object.
         models : list of numpy.array of float
             List of array of shape Nsample x Nlayer with conductiivty in mS/m. If empty,
@@ -1691,12 +1841,13 @@ class Problem(object):
         vmax : float, optional
             Maximum of the colorscale.
         pts : bool, optional
-            If `True` the measurements location will be plotted on the graph.
+            If `True` the measurement location will be plotted on the graph.
+        cmap: str, optional
         xlab : str, optional
             X label.
         ylab : str, optional
             Y label.
-        levels list of float, optional
+        levels : list of float, optional
             If `contour == True`, levels are the contour intervals.
         """
         if levels is None:
@@ -1915,6 +2066,7 @@ class Problem(object):
             Minimum value for colomap.
         vmax : float, optional
             Maximum value for colormap.
+        nlevel : int, optional
         """
         try:
             import rasterio
@@ -1944,7 +2096,7 @@ class Problem(object):
         else:
             z = griddata(np.c_[xknown, yknown], values, (X, Y), method=method)
         inside = np.ones(nx * ny)
-        # inside2 = clipConvexHull(xknown, yknown, x, y, inside)
+
         inside2 = clipConcaveHull(xknown, yknown, x, y, inside)
         ie = np.isnan(inside2).reshape(z.shape)
         z[ie] = np.nan
@@ -1963,7 +2115,7 @@ class Problem(object):
         )
         tt = tOffsetScaling
 
-        if color == True:
+        if color:
             if vmin is None:
                 vmin = np.nanpercentile(Z.flatten(), 2)
             if vmax is None:
@@ -2047,15 +2199,15 @@ class Problem(object):
             df.to_csv(fname, index=False)
 
     def interpData(self, surveyIndex=-1, method="nearest"):
-        """All locations from all  or specific surveys are merged
+        """All locations from all or specific surveys are merged
         and data are interpolated using nearest neighbours.
 
         Parameters
         ----------
         surveyIndex : int, optional
-            If -1, all locations from all surveys are merged together.
+            If -1, all locations from all surveys are merged.
             Otherwise, only the locations of the survey with the selected
-            index is used.
+            index are used.
         method : str, optional
             Either, 'nearest', 'linear' or 'cubic' method for interpolation.
         """
@@ -2144,13 +2296,10 @@ class Problem(object):
         depths0 = np.array(depths0, dtype=float)
         if np.sum(depths0 < 0) > 0:
             raise ValueError("All depth should be specified as positive number.")
-            return
         if np.sum(depths0 == 0) > 0:
             raise ValueError("No depth should be equals to 0 (infinitely thin layer)")
-            return
         if len(self.surveys) == 0:
             raise Exception("First import surveys and then set initial conditions")
-            return
 
         ddepths0 = []
         if len(depths0.shape) == 2:
@@ -2162,7 +2311,6 @@ class Problem(object):
                     raise ValueError(
                         "The shape of depths0 does not match all samples from all surveys."
                     )
-                    return
         else:  # it's a vector
             ndepth = len(depths0)
             for s in self.surveys:
@@ -2194,38 +2342,6 @@ class Problem(object):
                     cconds0.append(
                         np.ones((s.df.shape[0], ndepth + 1), dtype=float) * conds0
                     )
-
-        # ffixedDepths = []
-        # if len(fixedDepths.shape) == 2: # matrix
-        #     if fixedDepths.shape[1] != ddepths0[0].shape[1]:
-        #         raise ValueError('Shape of depths0 and fixedDepths should match.')
-        #         return
-        #     for s in self.surveys:
-        #         ffixedDepths.append(fixedDepths)
-        # elif len(fixedDepths.shape) == 1: # vector
-        #     if len(fixedDepths) != ndepth:
-        #         raise ValueError('Shape of depths0 and fixedDepths should match.')
-        #     for s in self.surveys:
-        #         ffixedDepths.append(np.ones((s.df.shape[0], ndepth), dtype=bool)*fixedDepths)
-        # else:
-        #     for s in self.surveys:
-        #         ffixedDepths.append(np.ones((s.df.shape[0], ndepth), dtype=bool))
-
-        # ffixedConds = []
-        # if len(fixedConds.shape) == 2: # matrix
-        #     if fixedConds.shape[1] != cconds0[0].shape[1]:
-        #         raise ValueError('Shape of conds0 and fixedConds should match.')
-        #         return
-        #     for s in self.surveys:
-        #         ffixedConds.append(conds0)
-        # elif len(fixedConds.shape) == 1: # vector
-        #     if len(fixedConds) != cconds0[0].shape[1]:
-        #         raise ValueError('Shape of conds0 and fixedConds should match.')
-        #     for s in self.surveys:
-        #         ffixedConds.append(np.ones((s.df.shape[0], ndepth+1), dtype=bool)*fixedConds)
-        # else:
-        #     for s in self.surveys:
-        #         ffixedConds.append(np.zeros((s.df.shape[0], ndepth+1), dtype=bool))
 
         if fixedDepths is None:
             fixedDepths = np.ones(ndepth, dtype=bool)
@@ -2304,11 +2420,8 @@ class Problem(object):
             Index of the sample in the survey.
         ax : Matplotlib.Axes, optional
             If specified, the graph will be plotted against this axis.
-        rmse : bool, optional
-            If `True`, the RMSE for each transect will be plotted on a second axis.
-            Note that misfit can also be shown with `showMisfit()`.
         errorbar : bool, optional
-            If `True` and inversion is MCMC-based, standard deviation bar are
+            If `True` and inversion is MCMC-based, standard deviation bar is
             drawn for the predicted depths and conductivities.
         """
         conds = self.models[index][ipos, :]
@@ -2398,7 +2511,7 @@ class Problem(object):
             If `True` and `computeDOI()` was called, the estimated DOI from
             above which 70% of the deeper coil configuration is coming from will
             be plotted on top of the graph as a red dotted line.
-        levels list of float, optional
+        levels : list of float, optional
             If `contour == True`, levels are the contour intervals.
         """
         if levels is None:
@@ -2408,7 +2521,6 @@ class Problem(object):
             depths = self.depths[index]
         except Exception:
             raise ValueError("No inverted model to plot")
-            return
 
         # set up default arguments
         if ax is None:
@@ -2474,16 +2586,6 @@ class Problem(object):
                 else:
                     levels = None
             cax = ax.contourf(xc, zc, val, cmap=cmap, levels=levels, extend="both")
-            # ax.scatter(xc, zc, s=15, c=val, cmap='jet')
-            # ax.plot(centroidx, centroidz, 'k+')
-            # ax.plot(vertices[:, 0], vertices[:, 1], 'k.')
-            # set clip path
-            # pathvert = np.c_[np.r_[xs[:,0], xs[::-1,0]], np.r_[ys[:,-1], ys[::-1,0]]]
-            # path = mpath.Path(pathvert)
-            # patch = mpatches.PathPatch(path, facecolor='none', edgecolor='k')
-            # ax.add_patch(patch)
-            # for col in cax.collections:
-            #     col.set_clip_path(patch)
 
             fig.colorbar(cax, ax=ax, label="EC [mS/m]")
         else:
@@ -2560,7 +2662,6 @@ class Problem(object):
             pl=None,
             vmin=None,
             vmax=None,
-            maxDepth=None,
             cmap="viridis_r",
             elev=False,
             edges=False,
@@ -2568,7 +2669,7 @@ class Problem(object):
             pvslices=([], [], []),
             pvthreshold=None,
             pvgrid=False,
-            pvcontour=[],
+            pvcontour=None,
     ):  # pragma: no cover
         """Show inverted model in 3D with pyvista (pip install pyvista).
 
@@ -2582,8 +2683,6 @@ class Problem(object):
             Minimum value of the colorbar.
         vmax : float, optional
             Maximum value of the colorbar.
-        maxDepth : float, optional
-            Maximum negative depths of the graph.
         cmap : str, optional
             Name of the Matplotlib colormap to use.
         elev : bool, optional
@@ -2603,6 +2702,8 @@ class Problem(object):
         pvcontour : list of float, optional
             Values of the isosurface to be plotted.
         """
+        if pvcontour is None:
+            pvcontour = []
         try:
             import pyvista as pv
         except:
@@ -2770,19 +2871,6 @@ class Problem(object):
         vals = np.hstack(vals)
         nelem = conMatrix.shape[0]
 
-        # check the node to cell interpolation
-        # fig, axs = plt.subplots(2, 1, figsize=(14,3))
-        # ax = axs[0]
-        # cax = ax.scatter(xy[:,0], xy[:,1], s=35, c=ec[:nsample], cmap='viridis_r')
-        # fig.colorbar(cax, ax=ax)
-        # ax = axs[1]
-        # xyc = np.mean(xy[triangles], axis=1)
-        # ax.scatter(xyc[:,0], xyc[:,1], s=35, c=vals[:xyc.shape[0]], cmap='viridis_r')
-        # ax.triplot(triang, lw=0.5, color='k')
-        # fig.colorbar(cax, ax=ax)
-        # ax.set_aspect('equal')
-        # fig.show()
-
         # writing vtk file
         with open(fname, "w") as f:
             f.write("# vtk DataFile Version 3.0\n")
@@ -2855,7 +2943,7 @@ class Problem(object):
 
     def computeApparentChange(self, ref=0):
         """Subtract the apparent conductivities of the reference survey
-        to all other surveys. By default the reference survey is the
+        to all other surveys. By default, the reference survey is the
         first survey. The survey can then be inverted with `invertGN()`.
 
         Parameters
@@ -2937,7 +3025,7 @@ class Problem(object):
 
             If `None` (default), the forward model used for the inversion is used.
         ax : matplotlib.Axes, optional
-            If specified the graph will be plotted on this axis.
+            If specified, the graph will be plotted on this axis.
         """
         if forwardModel is None:
             forwardModel = self.forwardModel
@@ -2957,17 +3045,15 @@ class Problem(object):
         ax.set_ylabel("ECa [mS/m]")
         ax.set_title("Dots (observed) vs lines (modelled)")
 
-    def showOne2one(
-            self, index=0, coil="all", forwardModel=None, ax=None, vmin=None, vmax=None
-    ):
+        return ax
+
+    def showOne2one(self, index=0, forwardModel=None, ax=None, vmin=None, vmax=None):
         """Show one to one plot with inversion results.
 
         Parameters
         ----------
         index : int, optional
             Index of the survey to plot.
-        coil : str, optional
-            Which coil to plot. Default is all.
         forwardModel : str, optional
             Type of forward model:
                 - CS : Cumulative sensitivity (default)
@@ -2989,10 +3075,6 @@ class Problem(object):
         cols = survey.coils
         obsECa = survey.df[cols].values
         simECa = dfsForward[index][cols].values
-        # print('number of nan', np.sum(np.isnan(obsECa)), np.sum(np.isnan(simECa)))
-        # rmses = np.sqrt(np.sum((obsECa - simECa)**2, axis=0)/np.sum(obsECa**2, axis=0)/obsECa.shape[0])*100 # old implementation
-        # rmses = np.sqrt(np.sum(((obsECa - simECa)/obsECa)**2, axis=0)/obsECa.shape[0])*100
-        # rmses = np.sqrt(np.sum((obsECa - simECa)**2, axis=0)/obsECa.shape[0])/np.sum(obsECa, axis=0)*100
         rmses = (
                 np.sqrt(np.sum(((obsECa - simECa) / obsECa) ** 2, axis=0) / obsECa.shape[0])
                 * 100
@@ -3012,6 +3094,8 @@ class Problem(object):
         ax.set_xlabel("Observed ECa [mS/m]")
         ax.set_ylabel("Simulated ECa [mS/m]")
         ax.legend(["{:s} ({:.2f} %)".format(c, r) for c, r in zip(cols, rmses)])
+
+        return ax
 
     def filterRange(self, vmin=None, vmax=None):
         """Filter out measurements that are not between vmin and vmax.
@@ -3099,157 +3183,6 @@ class Problem(object):
         ax.set_xlabel(r"Model Misfit ||L$\sigma$||$^2$")
         ax.set_ylabel(r"Data Misfit ||$\sigma_a - f(\sigma)$||$^2$")
 
-    def resMod2EC(
-            self, fnameECa, fnameResMod, meshType=None, binInt=None, nbins=None, calib=None
-    ):
-        """Convert mesh data to dfec array to be used in calibrate.
-
-        Parameters
-        ----------
-        fnameECa : str
-            Path of the .csv file with the ECa data collected on the calibration points.
-        fnameResMod : str
-            Path of the .dat file with the restivity model.
-        binInt : int, optional
-            Bin interval in metres, over which to average resistivity model.
-        nbins : int, optional
-            Number of bins to average the resistivity model over.
-        calib str, optional
-            If specified, will apply a GF correction. Note that the main dataset
-            needs to be corrected as well.
-        """
-
-        # import data
-        survey = Survey(fnameECa)
-        if calib is not None:
-            survey.gfCorrection(calib=calib)
-        # if meshType is None:
-        #     print('Please specify meshType, either "tri" or "quad"')
-
-        survey = Survey(fnameECa)
-        eca = survey.df[["x"] + survey.coils].values
-
-        resmod = pd.read_table(fnameResMod, sep="\s+", header=None).values
-
-        minX = np.min(eca[:, 0])
-        maxX = np.max(eca[:, 0])
-
-        if nbins is None:
-            if binInt is None:
-                nbins = int(eca.shape[0] - 1)
-            else:
-                nbins = int((maxX - minX) // binInt)
-
-        if nbins > eca.shape[0]:
-            raise ValueError(
-                "You have specified {:d} bins but you only have {:d} data points.".format(
-                    nbins, eca.shape[0]
-                )
-            )
-
-        if meshType is not None:
-            if meshType != "quad" and meshType != "tri":
-                print("Please specify mesh type as 'tri' or 'quad'.")
-                return
-
-        # crop ert mesh based on location of EMI calibration data
-        resmod = resmod[np.where((resmod[:, 0] >= minX) & (resmod[:, 0] <= maxX)), :][0]
-
-        if meshType == "quad":
-            print("Mesh is quadrilateral.")
-            # check if topo in mesh
-            maxTopo = max(resmod[:, 1])
-            x = resmod[:, 0]
-
-            if len(np.where(resmod[:, 1] == maxTopo)[0]) < len(np.unique(x)):
-                print("Mesh has topograpy and will be flattened.")
-
-                # get x location of maximum topography
-                xMaxTopo = x[np.where(resmod[:, 1] == maxTopo)]
-
-                # determine new z values for mesh
-                newZ = resmod[np.where(resmod[:, 0] == xMaxTopo), 1] - maxTopo
-
-                # count number of layers for each x position along transect
-                uniqueX = np.unique(x)
-                nlayers = []
-                for i in range(0, len(uniqueX)):
-                    nlayers = np.append(
-                        nlayers,
-                        resmod[np.where(resmod[:, 0] == uniqueX[i]), 1].shape[1],
-                    )
-
-                # normalize layer depths for each x position
-                for i in range(0, len(uniqueX)):
-                    resmodCol = resmod[np.where(resmod[:, 0] == uniqueX[i]), :]
-                    shiftZ = np.max(resmodCol[0][:, 1]) - maxTopo
-                    resmod[np.where(resmod[:, 0] == uniqueX[i]), 1] = (
-                            resmod[np.where(resmod[:, 0] == uniqueX[i]), 1] - shiftZ
-                    )
-
-                resmod[:, 1] = resmod[:, 1] - maxTopo
-
-                # model needs homogenous layer number, layers exceeding minimum number of layers deleted
-                nlayer = np.min(nlayers)
-                resmod = resmod[np.where(resmod[:, 1] > np.mean(newZ[0][::-1][:2])), :][
-                    0
-                ]
-                newZ = newZ[0][: int(nlayer)]
-                for i in range(0, len(uniqueX)):
-                    resmod[np.where(resmod[:, 0] == uniqueX[i]), 1] = (
-                        newZ  # this is done to avoid errors arising from rounding
-                    )
-
-        if meshType == "tri":
-            print(
-                "Mesh is triangular, topography shift is not implement and will be assumed negligible."
-            )
-
-        # below is common to tri and quad mesh
-        # TODO method define upper surface of mesh when topography is involved
-        x = resmod[:, 0]
-        z = resmod[:, 1]
-        res = resmod[:, 2]
-        xi = np.arange(np.min(x), np.max(x), 0.25)
-        zi = np.linspace(np.min(z), np.max(z), 15)  # 15 layers in Y
-        xi, zi = np.meshgrid(xi, zi)
-        resi = griddata((x, z), res, (xi, zi), method="linear")  # linear interpolation
-        x = np.unique(xi)
-        z = np.unique(zi)
-        resmodxz = np.array(np.meshgrid(x, z)).T.reshape(-1, 2)
-        res = resi.T.flatten()
-        resmod = np.concatenate((resmodxz, res[:, None]), axis=1)
-        resmod = resmod[~np.isnan(resmod[:, 2]), :]
-
-        midDepths = -np.unique(resmod[:, 1])
-        # compute mean EC for each bin
-        bins = np.linspace(minX, maxX, nbins + 1)
-        binID = np.digitize(resmod[:, 0], bins + 1)
-        ec = np.empty((nbins, len(midDepths)))
-        midDepthsr = midDepths[::-1]
-        for i in range(0, nbins):
-            for j in range(0, len(midDepths)):
-                idepth = resmod[:, 1] == -midDepthsr[j]
-                ibins = binID == i + 1
-                ec[i, j] = 1000 / np.mean(resmod[idepth & ibins, 2])
-
-        # compute mean ECa for each bin
-        binID = np.digitize(np.unique(eca[:, 0]), bins)
-        depths = (midDepthsr[1:] + midDepthsr[:-1]) / 2
-        eca2 = np.zeros((nbins, eca.shape[1]))
-        for i in range(0, nbins):
-            ie = binID == i + 1
-            if np.sum(ie) > 0:
-                eca2[i, :] = np.mean(eca[ie, :], axis=0)
-        eca2 = np.array(eca2)
-        eca2 = eca2[~np.isnan(eca2).any(axis=1)]
-        eca2[np.all(eca2 == 0, axis=1)] = np.nan
-        dist = (bins[1:] + bins[:-1]) / 2
-
-        # ec is electrical conductivtiy from ERT model, depths are depths from resmodel, eca2 is eca data in same
-        # dimension as ec
-        return ec, depths, eca2[:, 1:], dist
-
     def calibrate(
             self,
             fnameECa,
@@ -3316,7 +3249,7 @@ class Problem(object):
                 forwardModel = "CS"  # doesn't need frequency
 
         if fnameResMod is not None:
-            ec, depths, eca, dist = self.resMod2EC(
+            ec, depths, eca, dist = resMod2EC(
                 fnameECa=fnameECa,
                 fnameResMod=fnameResMod,
                 meshType=meshType,
@@ -3648,30 +3581,20 @@ class Problem(object):
         fig.colorbar(cax, ax=ax, label="Depth [m]")
         ax.set_title("Depths[{:d}]".format(idepth))
 
+        return ax
+
     def computeDOI(self, conds=None, depths=None, nlayers=50):
         """Compute a depth of investigation (DOI) for each 1D EC model.
         Sensitivity cutoff at 0.3, i.e. 70% of signal comes from above the DOI.
 
         Parameters
         ----------
-        forwardModel : str,
-            forward model
         nlayers : int,
             number of layers for model. Depth index. Default is first depth.
-        step : int,
-            number of steps to use for each range
-        fixedParam : list of int and None,
-            array of whether parameters out to be fixed in grid parameter search or not
-        bnds : list of float, optional
-            If specified, will create bounds for the inversion parameters
-        topPer : int,
-            Top X percentage of models to be used for model boundaries
         """
         # initial argument check
-        ilocal = False
         if conds is None:
             conds = self.models.copy()
-            ilocal = True
         else:
             conds = [conds]
         if depths is None:
@@ -3723,7 +3646,6 @@ class Problem(object):
 
     def gridParamSearch(
             self,
-            forwardModel,
             nlayers=2,
             step=25,
             misfitMax=0.1,
@@ -3739,8 +3661,6 @@ class Problem(object):
 
         Parameters
         ----------
-        forwardModel : str
-            Forward model name. Either 'CS','FSlin' of 'FSeq'.
         nlayers : int, optional
             Number of layers for model. Depth index. Default is first depth.
         step : int, optional

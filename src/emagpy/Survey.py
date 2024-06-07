@@ -200,7 +200,7 @@ def convertFromCoord(df, targetProjection=None):
             arg = arg[:-1]
             x = arg.index(".")
             a = float(arg[: x - 2])  # degree
-            b = float(arg[x - 2 :])  # minutes
+            b = float(arg[x - 2:])  # minutes
             return (a + b / 60) * sign
         except Exception as e:
             print("ERROR in NMEA string conversion, will set NaN instead")
@@ -218,10 +218,10 @@ def convertFromCoord(df, targetProjection=None):
         deg = int(arg[:deg_idx])
         # extract minutes from string
         min_idx = arg.find("'")
-        mins = int(arg[(deg_idx + 1) : min_idx])
+        mins = int(arg[(deg_idx + 1): min_idx])
         # extract seconds from string
         sec_idx = arg.find('"')
-        secs = float(arg[(min_idx + 1) : sec_idx])
+        secs = float(arg[(min_idx + 1): sec_idx])
         DD = deg + (mins / 60) + (secs / 3600)  # decimal degree calculation
         return sign * DD  # return with sign
 
@@ -292,7 +292,7 @@ class Survey(object):
     """
 
     def __init__(
-        self, fname=None, freq=None, hx=None, targetProjection=None, unit="ppt"
+            self, fname=None, freq=None, hx=None, targetProjection=None, unit="ppt"
     ):
         self.df = None  # main dataframe
         self.drift_df = None  # drift station dataframe
@@ -370,11 +370,11 @@ class Survey(object):
         for c in df.columns:
             orientation = c[:3].upper()
             if (
-                (orientation == "VCP")
-                | (orientation == "VMD")
-                | (orientation == "PRP")
-                | (orientation == "HCP")
-                | (orientation == "HMD")
+                    (orientation == "VCP")
+                    | (orientation == "VMD")
+                    | (orientation == "PRP")
+                    | (orientation == "HCP")
+                    | (orientation == "HMD")
             ):
                 # replace all orientation in HCP/VCP/PRP mode
                 if orientation == "HMD":
@@ -422,14 +422,14 @@ class Survey(object):
             info = self.getCoilInfo(coilName)
             if unit == "ppt":
                 values = (
-                    1 + 1j * df[c].values / 1e3
+                        1 + 1j * df[c].values / 1e3
                 )  # Q is in ppt (part per thousand) like GF-Instruments
             elif unit == "ppm":
                 values = (
-                    1 + 1j * df[c].values / 1e6
+                        1 + 1j * df[c].values / 1e6
                 )  # Q is in ppm (part per million) like GEM 2
             df[coilName] = (
-                Q2eca(values, s=info["coilSeparation"], f=info["freq"]) * 1e3
+                    Q2eca(values, s=info["coilSeparation"], f=info["freq"]) * 1e3
             )  # mS/m
             self.coils.append(coilName)
 
@@ -720,17 +720,17 @@ class Survey(object):
         ax.set_ylabel("Count")
 
     def showMap(
-        self,
-        coil=None,
-        contour=False,
-        ax=None,
-        vmin=None,
-        vmax=None,
-        pts=False,
-        cmap="viridis_r",
-        xlab="x",
-        ylab="y",
-        levels=None,
+            self,
+            coil=None,
+            contour=False,
+            ax=None,
+            vmin=None,
+            vmax=None,
+            pts=False,
+            cmap="viridis_r",
+            xlab="x",
+            ylab="y",
+            levels=None,
     ):
         """Display a map of the measurements.
 
@@ -805,22 +805,22 @@ class Survey(object):
             fig.colorbar(cax, ax=ax, label="ECa [mS/m]")
 
     def saveMap(
-        self,
-        fname,
-        coils=None,
-        nx=100,
-        ny=100,
-        method="linear",
-        xmin=None,
-        xmax=None,
-        ymin=None,
-        ymax=None,
-        color=False,
-        cmap="viridis_r",
-        vmin=None,
-        vmax=None,
-        nlevel=14,
-        coil=None,
+            self,
+            fname,
+            coils=None,
+            nx=100,
+            ny=100,
+            method="linear",
+            xmin=None,
+            xmax=None,
+            ymin=None,
+            ymax=None,
+            color=False,
+            cmap="viridis_r",
+            vmin=None,
+            vmax=None,
+            nlevel=14,
+            coil=None,
     ):
         """Save a georeferenced raster TIFF file.
 
@@ -949,42 +949,42 @@ class Survey(object):
                     Z[np.fliplr(ie.T).T, i] = 0
 
                 with rasterio.open(
-                    fname.replace(".tif", "_" + coil + ".tif"),
-                    "w",
-                    driver="GTiff",
-                    height=Z.shape[0],
-                    width=Z.shape[1],
-                    count=4,
-                    dtype=Z.dtype,
-                    crs=self.projection,
-                    transform=tt,
+                        fname.replace(".tif", "_" + coil + ".tif"),
+                        "w",
+                        driver="GTiff",
+                        height=Z.shape[0],
+                        width=Z.shape[1],
+                        count=4,
+                        dtype=Z.dtype,
+                        crs=self.projection,
+                        transform=tt,
                 ) as dst:
                     for i in range(4):  # RGB + mask
                         dst.write(Z[:, :, i], i + 1)
         else:
             with rasterio.open(
-                fname,
-                "w",
-                driver="GTiff",
-                height=Z.shape[0],
-                width=Z.shape[1],
-                count=len(layers),
-                dtype=Z.dtype,
-                crs=self.projection,
-                transform=tt,
+                    fname,
+                    "w",
+                    driver="GTiff",
+                    height=Z.shape[0],
+                    width=Z.shape[1],
+                    count=len(layers),
+                    dtype=Z.dtype,
+                    crs=self.projection,
+                    transform=tt,
             ) as dst:
                 for i, layer in enumerate(layers):
                     dst.write(layer, i + 1)
 
     def gridData(
-        self,
-        nx=100,
-        ny=100,
-        method="nearest",
-        xmin=None,
-        xmax=None,
-        ymin=None,
-        ymax=None,
+            self,
+            nx=100,
+            ny=100,
+            method="nearest",
+            xmin=None,
+            xmax=None,
+            ymin=None,
+            ymax=None,
     ):
         """Grid data.
 
@@ -1120,13 +1120,13 @@ class Survey(object):
         ax.loglog(means, error, ".")
         ax.loglog(meansBinned, errorBinned, "o")
         predError = 10 ** (intercept + slope * np.log10(means))
-        if slope < 0.01 or 10**intercept < 0.01:  # switch to scientific notation
+        if slope < 0.01 or 10 ** intercept < 0.01:  # switch to scientific notation
             eq = r"$\epsilon = {:.2e} \times \sigma^{{{:.2e}}}$".format(
-                10**intercept, slope
+                10 ** intercept, slope
             )
         else:
             eq = r"$\epsilon = {:.2f} \times \sigma^{{{:.2f}}}$".format(
-                10**intercept, slope
+                10 ** intercept, slope
             )
         isort = np.argsort(means)
         ax.loglog(means[isort], predError[isort], "k-", label=eq)
@@ -1228,7 +1228,7 @@ class Survey(object):
             for i, coil in enumerate(coils):
                 qvalues = 0 + df[self.coils[i]].values / gfcoefs[coil] * 1e-3j
                 df.loc[:, self.coils[i]] = (
-                    Q2eca(qvalues, self.cspacing[i], f=self.freqs[i]) * 1000
+                        Q2eca(qvalues, self.cspacing[i], f=self.freqs[i]) * 1000
                 )  # mS/m
         if calib == "F-1m":
             gfcoefs = {
@@ -1244,22 +1244,22 @@ class Survey(object):
             """
             for i, coil in enumerate(coils):
                 qvalues = (
-                    0 + df[self.coils[i]].values / gfcoefs[coil] * 1e-3j
+                        0 + df[self.coils[i]].values / gfcoefs[coil] * 1e-3j
                 )  # in part per thousand
                 df.loc[:, self.coils[i]] = (
-                    Q2eca(qvalues, self.cspacing[i], f=self.freqs[i]) * 1000
+                        Q2eca(qvalues, self.cspacing[i], f=self.freqs[i]) * 1000
                 )
         self.df = df
         print("gfCorrection: {:s} calibrated ECa converted to LIN ECa".format(calib))
 
     def importGF(
-        self,
-        fnameLo=None,
-        fnameHi=None,
-        device="CMD Mini-Explorer",
-        hx=0,
-        calib=None,
-        targetProjection=None,
+            self,
+            fnameLo=None,
+            fnameHi=None,
+            device="CMD Mini-Explorer",
+            hx=0,
+            calib=None,
+            targetProjection=None,
     ):
         """Import GF instrument data with Lo and Hi file mode. If spatial data
         a regridding will be performed to match the data.
@@ -1492,7 +1492,7 @@ class Survey(object):
             else:  # edge case
                 edge = True
                 if dx == 0 and dy == 0:
-                    quad = 0  #'0'
+                    quad = 0  # '0'
                 elif dx == 0 and dy > 0:
                     quad = 0
                 elif dx > 0 and dy == 0:
@@ -1507,7 +1507,7 @@ class Survey(object):
 
         dx = np.diff(x)  # delta x
         dy = np.diff(y)  # delta y
-        h = np.sqrt(dx**2 + dy**2)  # length of hypothenus
+        h = np.sqrt(dx ** 2 + dy ** 2)  # length of hypothenus
 
         # computing quadrant and if point is on edge case
         quad, edge = quadrantCheck(dx, dy)
@@ -1532,7 +1532,7 @@ class Survey(object):
 
         # computing bearing
         bearing[azimuth > 180] = (
-            azimuth[azimuth > 180] - 180
+                azimuth[azimuth > 180] - 180
         )  # add 180 in order to get a postive bearing or strike
         bearing[azimuth <= 180] = azimuth[azimuth <= 180]
 
@@ -1606,14 +1606,14 @@ class Survey(object):
         self.df = self.df[i2keep].reset_index(drop=True)
 
     def driftCorrection(
-        self,
-        xStation=None,
-        yStation=None,
-        coils="all",
-        radius=1,
-        fit="all",
-        ax=None,
-        apply=False,
+            self,
+            xStation=None,
+            yStation=None,
+            coils="all",
+            radius=1,
+            fit="all",
+            ax=None,
+            apply=False,
     ):
         """Compute drift correction from EMI given a station point and a radius.
 
@@ -1656,7 +1656,7 @@ class Survey(object):
 
         # compute group mean and std
         groups = [
-            val[igroup[i] : igroup[i + 1], :] for i in np.arange(len(igroup) - 1)[a::2]
+            val[igroup[i]: igroup[i + 1], :] for i in np.arange(len(igroup) - 1)[a::2]
         ]
         print("{:d} drift points detected.".format(len(groups)))
         vm = np.array([np.mean(g, axis=0) for g in groups])
@@ -1672,9 +1672,9 @@ class Survey(object):
                 if apply:
                     vm[:, i] = vm[:, i] - xs * slope - offset + np.mean(vm[:, i])
                     corr = (
-                        -np.linspace(0, 1, self.df.shape[0]) * slope
-                        - offset
-                        + np.mean(vm[:, i])
+                            -np.linspace(0, 1, self.df.shape[0]) * slope
+                            - offset
+                            + np.mean(vm[:, i])
                     )
                     self.df.loc[:, coil] = self.df[coil].values + corr
         elif fit == "each":
@@ -1683,21 +1683,21 @@ class Survey(object):
             xpred = np.repeat(np.arange(vm.shape[0]), 2)[1:-1]
             for i, coil in enumerate(coils):
                 for j in range(vm.shape[0] - 1):
-                    slope, offset = np.polyfit(xs, vm[j : j + 2, i], 1)
-                    vpred[j * 2 : j * 2 + 2, i] = xs * slope + offset
+                    slope, offset = np.polyfit(xs, vm[j: j + 2, i], 1)
+                    vpred[j * 2: j * 2 + 2, i] = xs * slope + offset
                     if apply:
                         # correct part between two drift points
                         ie = np.zeros(self.df.shape[0], dtype=bool)
-                        ie[igroup[a + j * 2 + 1] : igroup[a + j * 2 + 2]] = True
+                        ie[igroup[a + j * 2 + 1]: igroup[a + j * 2 + 2]] = True
                         corr = -(
-                            np.linspace(0, 1, np.sum(ie)) * slope + offset
+                                np.linspace(0, 1, np.sum(ie)) * slope + offset
                         ) + np.mean(vm[:, i])
                         self.df.loc[ie, coil] = self.df[ie][coil].values + corr
                 if apply:
                     # correct drift points
                     for j in range(vm.shape[0]):
                         ie = np.zeros(self.df.shape[0], dtype=bool)
-                        ie[igroup[a + j * 2] : igroup[a + j * 2 + 1]] = True
+                        ie[igroup[a + j * 2]: igroup[a + j * 2 + 1]] = True
                         corr = -vm[j, i] + np.mean(vm[:, i])
                         self.df.loc[ie, coil] = self.df[ie][coil].values + corr
                     vm[:, i] = np.mean(vm[:, i])  # for graph
@@ -1720,7 +1720,7 @@ class Survey(object):
             ax.set_title("Drift fitted but not applied")
 
     def crossOverPointsDrift(
-        self, coil=None, ax=None, dump=print, minDist=1, apply=False
+            self, coil=None, ax=None, dump=print, minDist=1, apply=False
     ):  # pragma: no cover
         """Build an error model based on the cross-over points.
 

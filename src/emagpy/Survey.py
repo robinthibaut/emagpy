@@ -23,30 +23,29 @@ from scipy.spatial import ConvexHull
 from emagpy.invertHelper import Q2eca
 
 
-
 def clipConvexHull(xdata, ydata, x, y, z):
     """Set to nan data outside the convex hull of xdata, ydata
-    
+
     Parameters
     ----------
         xdata, ydata (arrays) : x and y position of the data collected
         x, y (arrays) : x and y position of the computed interpolation points
         z (arrays) : value of the interpolation
-    
+
     Returns
     -------
         znew (array) : a copy of z with nan when outside convexHull
     """
     knownPoints = np.array([xdata, ydata]).T
-    newPoints = np.array([x,y]).T
-    _, idx = np.unique(xdata+ydata, return_index=1)
-    q = ConvexHull(knownPoints[idx,:])
+    newPoints = np.array([x, y]).T
+    _, idx = np.unique(xdata + ydata, return_index=1)
+    q = ConvexHull(knownPoints[idx, :])
     hull = Delaunay(q.points[q.vertices, :])
-#    qq = q.points[q.vertices,:]
-        
+    #    qq = q.points[q.vertices,:]
+
     znew = np.copy(z)
     for i in range(0, len(z)):
-        if hull.find_simplex(newPoints[i,:]) < 0:
+        if hull.find_simplex(newPoints[i, :]) < 0:
             znew[i] = np.nan
     return znew
 
@@ -66,7 +65,7 @@ def clipConcaveHull(xdata, ydata, x, y, z):
         Y positions of interpolated points
     z : array_like
         Z values of interpolated points
-    
+
     Returns
     -------
     znew : array_like
@@ -75,13 +74,16 @@ def clipConcaveHull(xdata, ydata, x, y, z):
     try:
         from concave_hull import concave_hull_indexes
     except ImportError as e:
-        print('concave-hull not installed, will use convexhull instead. Install it with `pip install concave-hull`')
+        print(
+            "concave-hull not installed, will use convexhull instead. Install it with `pip install concave-hull`"
+        )
         znew = clipConvexHull(xdata, ydata, x, y, z)
         return znew
-    
+
     # estimate threshold
-    threshold = np.max([(np.min(xdata) - np.max(xdata))/10,
-                        (np.min(ydata) - np.max(ydata))/10])
+    threshold = np.max(
+        [(np.min(xdata) - np.max(xdata)) / 10, (np.min(ydata) - np.max(ydata)) / 10]
+    )
 
     # building concave hull
     points = np.c_[xdata, ydata]
@@ -93,7 +95,7 @@ def clipConcaveHull(xdata, ydata, x, y, z):
         seg = points[[f, t]]
         segs.append(seg[0, :])
     path = mpath.Path(segs)
-    
+
     # set to NaN point outside concave hull
     ie = ~path.contains_points(np.c_[x, y])
     znew = np.copy(z)
@@ -101,10 +103,11 @@ def clipConcaveHull(xdata, ydata, x, y, z):
 
     return znew
 
+
 def tricontourf_clipped(x, y, z, ax=None, **kwargs):
     """Adaption of matplotlib tricontourf with mask inside concave hull.
     Note the additional 'ax' argument to specify the axis.
-    
+
     Parameters
     ----------
     x : array_like
@@ -120,13 +123,15 @@ def tricontourf_clipped(x, y, z, ax=None, **kwargs):
 
     Returns
     -------
-    cax : 
+    cax :
         Output of matplotlib tricontourf.
     """
     try:
         from concave_hull import concave_hull_indexes
     except ImportError as e:
-        print('concave-hull not installed, will use normal tricontourf instead. Install it with `pip install concave-hull`')
+        print(
+            "concave-hull not installed, will use normal tricontourf instead. Install it with `pip install concave-hull`"
+        )
         ax.tricontourf(x, y, z, **kwargs)
         return
 
@@ -134,11 +139,12 @@ def tricontourf_clipped(x, y, z, ax=None, **kwargs):
     triang = mtri.Triangulation(x, y)
 
     # compute triangles centroids
-    centroid = np.mean([triang.x[triang.triangles], triang.y[triang.triangles]], axis=-1).T
+    centroid = np.mean(
+        [triang.x[triang.triangles], triang.y[triang.triangles]], axis=-1
+    ).T
 
     # compute concave hull
-    threshold = np.max([(np.min(x) - np.max(x))/10,
-                        (np.min(y) - np.max(y))/10])
+    threshold = np.max([(np.min(x) - np.max(x)) / 10, (np.min(y) - np.max(y)) / 10])
     points = np.c_[x, y]
     idxes = concave_hull_indexes(points, length_threshold=threshold)
 
@@ -147,7 +153,7 @@ def tricontourf_clipped(x, y, z, ax=None, **kwargs):
     for f, t in zip(idxes[:-1], idxes[1:]):  # noqa
         seg = points[[f, t]]
         segs.append(seg[0, :])
-    
+
     # create path and check if centroids are inside the concave hull
     path = mpath.Path(segs)
     ie = path.contains_points(centroid)
@@ -161,18 +167,18 @@ def tricontourf_clipped(x, y, z, ax=None, **kwargs):
 
 def idw(xnew, ynew, xknown, yknown, zknown, n=1):
     znew = np.zeros(len(xnew))
-    for i,(x,y) in enumerate(zip(xnew, ynew)):
-#        dist = pdist(x, y, xknown, yknown)
-        dist = np.sqrt((x-xknown)**2+(y-yknown)**2)
+    for i, (x, y) in enumerate(zip(xnew, ynew)):
+        #        dist = pdist(x, y, xknown, yknown)
+        dist = np.sqrt((x - xknown) ** 2 + (y - yknown) ** 2)
         # if we consider all the points (might be not good)
-        w = (1/dist)**n # exponent to be chosen
-        znew[i] = np.sum(zknown*w)/np.sum(w)
+        w = (1 / dist) ** n  # exponent to be chosen
+        znew[i] = np.sum(zknown * w) / np.sum(w)
     return znew
 
 
 def convertFromCoord(df, targetProjection=None):
     """Convert coordinates string (NMEA or DMS) to selected CRS projection.
-    
+
     Parameters
     ----------
     df : pandas.DataFrame
@@ -183,88 +189,91 @@ def convertFromCoord(df, targetProjection=None):
         for the British Grid. If None, only WGS84 decimal degree will be returned.
     """
     import pyproj
-    
+
     def NMEA(arg):
-        """ Convert NMEA string to WGS84 (GPS) decimal degree.
-        """
+        """Convert NMEA string to WGS84 (GPS) decimal degree."""
         try:
             letter = arg[-1]
-            if (letter == 'W') | (letter == 'S'):
+            if (letter == "W") | (letter == "S"):
                 sign = -1
             else:
                 sign = 1
             arg = arg[:-1]
-            x = arg.index('.')
-            a = float(arg[:x-2]) # degree
-            b = float(arg[x-2:]) # minutes
-            return (a + b/60)*sign
+            x = arg.index(".")
+            a = float(arg[: x - 2])  # degree
+            b = float(arg[x - 2 :])  # minutes
+            return (a + b / 60) * sign
         except Exception as e:
-            print('ERROR in NMEA string conversion, will set NaN instead')
+            print("ERROR in NMEA string conversion, will set NaN instead")
             return np.nan
-    
+
     def DMS(arg):
-        """Convert convert degrees, minutes, seconds to decimal degrees
-        """
+        """Convert convert degrees, minutes, seconds to decimal degrees"""
         letter = arg[-1]
-        if (letter == 'W') | (letter == 'S'):
+        if (letter == "W") | (letter == "S"):
             sign = -1
         else:
             sign = 1
-        #extract degrees from string
-        deg_idx = arg.find('°')
+        # extract degrees from string
+        deg_idx = arg.find("°")
         deg = int(arg[:deg_idx])
-        #extract minutes from string
+        # extract minutes from string
         min_idx = arg.find("'")
-        mins = int(arg[(deg_idx+1):min_idx])
-        #extract seconds from string
+        mins = int(arg[(deg_idx + 1) : min_idx])
+        # extract seconds from string
         sec_idx = arg.find('"')
-        secs = float(arg[(min_idx+1):sec_idx])
-        DD = deg + (mins/60) + (secs/3600) # decimal degree calculation
-        return sign*DD # return with sign
+        secs = float(arg[(min_idx + 1) : sec_idx])
+        DD = deg + (mins / 60) + (secs / 3600)  # decimal degree calculation
+        return sign * DD  # return with sign
 
     def gps2gps(x):
         return float(x)
-    
-    check = df['latitude'].values[0]
+
+    check = df["latitude"].values[0]
     if not isinstance(check, float):
-        if check.find('°') !=-1 and check.find("'") != -1:
-            print("Coordinates appear to be given as Degrees, minutes, seconds ... adjusting conversion scheme")
+        if check.find("°") != -1 and check.find("'") != -1:
+            print(
+                "Coordinates appear to be given as Degrees, minutes, seconds ... adjusting conversion scheme"
+            )
             gps2deg = np.vectorize(DMS)
-        elif any([a in check for a in ['N','S','W','E']]):
-            print('Coordinates converted from NMEA string')
+        elif any([a in check for a in ["N", "S", "W", "E"]]):
+            print("Coordinates converted from NMEA string")
             gps2deg = np.vectorize(NMEA)
         else:  # assume in decimal degree
             gps2deg = np.vectorize(gps2gps)
     else:
         gps2deg = np.vectorize(gps2gps)
-    
-    df['lat'] = gps2deg(df['latitude'].values)
-    df['lon'] = gps2deg(df['longitude'].values)
+
+    df["lat"] = gps2deg(df["latitude"].values)
+    df["lon"] = gps2deg(df["longitude"].values)
 
     # in case some values were not well converted, drop the NaN rows
-    df = df[df['lat'].notnull() & df['lon'].notnull()].reset_index(drop=True)
-    
+    df = df[df["lat"].notnull() & df["lon"].notnull()].reset_index(drop=True)
+
     if targetProjection is not None:
         try:
-            transformer = pyproj.Transformer.from_crs('EPSG:4326', targetProjection, always_xy=True)
-            df['x'], df['y'] = transformer.transform(
-                df['lon'].values, df['lat'].values)
+            transformer = pyproj.Transformer.from_crs(
+                "EPSG:4326", targetProjection, always_xy=True
+            )
+            df["x"], df["y"] = transformer.transform(df["lon"].values, df["lat"].values)
             # wgs84 = pyproj.Proj("EPSG:4326") # LatLon with WGS84 datum used by GPS units and Google Earth
             # targetCRS = pyproj.Proj(targetProjection) # target EPSG
-            # df['x'], df['y'] = pyproj.transform(wgs84, targetCRS, 
+            # df['x'], df['y'] = pyproj.transform(wgs84, targetCRS,
             #                   df['lat'].values, df['lon'].values)
         except Exception as e:
-            raise ValueError('You may need to upgrade pyproj (pip install -U pyproj) to have Transformer')
+            raise ValueError(
+                "You may need to upgrade pyproj (pip install -U pyproj) to have Transformer"
+            )
     else:  # set decimal degree as x,y if no projection given
-        df['x'] = df['lon']
-        df['y'] = df['lat']
+        df["x"] = df["lon"]
+        df["y"] = df["lat"]
 
     return df
 
-    
+
 class Survey(object):
-    """ Create a Survey object containing the raw EMI data.
-    
+    """Create a Survey object containing the raw EMI data.
+
     Parameters
     ----------
     fname : str
@@ -278,38 +287,40 @@ class Survey(object):
         If specified, the 'latitude' and 'longitude' NMEA string will be
         converted to the targeted grid e.g. : 'EPSG:3395'.
     unit : str, optional
-        Unit for the _quad and _inph columns. By default assume to be in ppt 
+        Unit for the _quad and _inph columns. By default assume to be in ppt
         (part per thousand). ppm (part per million) can also be specified. Note
         that ECa columns, if present are assumed to be in mS/m.
     """
-    def __init__(self, fname=None, freq=None, hx=None, targetProjection=None, unit='ppt'):
-        self.df = None # main dataframe
-        self.drift_df = None # drift station dataframe
-        self.fil_df = None # filtered dataframe 
-        self.freqs = [] # frequency of each coil [Hz]
-        self.errorModel = None # a function that returns an error
-        self.sensor = None # sensor name (+ company)
-        self.coils = [] # columns with the coils names and configuration
-        self.cpos = [] # orientation of the coils
-        self.cspacing = [] # spacing between Tx and Rx [m]
-        self.coilsInph = [] # name of the coils with inphase value in [ppt]
-        self.coilsErr = [] # stacking error
-        self.coilsQuad = [] # name of the coils with quadrature value in ppt
-        self.hx = [] # height of the instrument above the ground [m]
-        self.name = ''
+
+    def __init__(
+        self, fname=None, freq=None, hx=None, targetProjection=None, unit="ppt"
+    ):
+        self.df = None  # main dataframe
+        self.drift_df = None  # drift station dataframe
+        self.fil_df = None  # filtered dataframe
+        self.freqs = []  # frequency of each coil [Hz]
+        self.errorModel = None  # a function that returns an error
+        self.sensor = None  # sensor name (+ company)
+        self.coils = []  # columns with the coils names and configuration
+        self.cpos = []  # orientation of the coils
+        self.cspacing = []  # spacing between Tx and Rx [m]
+        self.coilsInph = []  # name of the coils with inphase value in [ppt]
+        self.coilsErr = []  # stacking error
+        self.coilsQuad = []  # name of the coils with quadrature value in ppt
+        self.hx = []  # height of the instrument above the ground [m]
+        self.name = ""
         self.iselect = []
-        self.projection = None # store the project
+        self.projection = None  # store the project
         if fname is not None:
             self.readFile(fname, targetProjection=targetProjection, unit=unit)
             if freq is not None:
-                self.freqs = np.ones(len(self.coils))*freq
+                self.freqs = np.ones(len(self.coils)) * freq
             if hx is not None:
-                self.hx = np.ones(len(self.coils))*hx
-        
-    
-    def readFile(self, fname, sensor=None, targetProjection=None, unit='ppt'):
+                self.hx = np.ones(len(self.coils)) * hx
+
+    def readFile(self, fname, sensor=None, targetProjection=None, unit="ppt"):
         """Read a .csv file.
-        
+
         Parameters
         ----------
         fname : str
@@ -320,24 +331,23 @@ class Survey(object):
             EPSG string describing the projection of a 'latitude' and 'longitude'
             column is found in the dataframe. e.g. 'EPSG:3395' for the British grid.
         unit : str, optional
-            Unit for the _quad and _inph columns. By default assume to be in ppt 
+            Unit for the _quad and _inph columns. By default assume to be in ppt
             (part per thousand). ppm (part per million) can also be specified. Note
             that ECa columns, if present are assumed to be in mS/m.
         """
-        if type(fname) == type('a'):
+        if type(fname) == type("a"):
             name = os.path.basename(fname)[:-4]
         else:
-            name = 'MySurvey'
-        delimiter=','
-        if fname.find('.DAT')!=-1:
-            delimiter = '\t'
+            name = "MySurvey"
+        delimiter = ","
+        if fname.find(".DAT") != -1:
+            delimiter = "\t"
         df = pd.read_csv(fname, delimiter=delimiter)
         self.readDF(df, name, sensor, targetProjection, unit)
-        
-        
-    def readDF(self, df, name=None, sensor=None, targetProjection=None, unit='ppt'):
+
+    def readDF(self, df, name=None, sensor=None, targetProjection=None, unit="ppt"):
         """Parse dataframe.
-        
+
         Parameters
         ----------
         df : pandas.DataFrame
@@ -351,33 +361,38 @@ class Survey(object):
             EPSG string describing the projection of a 'latitude' and 'longitude'
             column is found in the dataframe. e.g. 'EPSG:3395' for the British grid.
         unit : str, optional
-            Unit for the _quad and _inph columns. By default assume to be in ppt 
+            Unit for the _quad and _inph columns. By default assume to be in ppt
             (part per thousand). ppm (part per million) can also be specified. Note
             that ECa columns, if present are assumed to be in mS/m.
         """
-        self.name = 'Survey 1' if name is None else name
+        self.name = "Survey 1" if name is None else name
 
         # parsing columns and extracting coils information
         for c in df.columns:
             orientation = c[:3].upper()
-            if ((orientation == 'VCP') | (orientation == 'VMD') | (orientation == 'PRP') |
-                    (orientation == 'HCP') | (orientation == 'HMD')):
+            if (
+                (orientation == "VCP")
+                | (orientation == "VMD")
+                | (orientation == "PRP")
+                | (orientation == "HCP")
+                | (orientation == "HMD")
+            ):
                 # replace all orientation in HCP/VCP/PRP mode
-                if orientation == 'HMD':
-                    df = df.rename(columns={c:c.replace('HMD','VCP')})
-                if orientation == 'VMD':
-                    df = df.rename(columns={c:c.replace('VMD','HCP')})
-                if c[-5:] == '_inph':
+                if orientation == "HMD":
+                    df = df.rename(columns={c: c.replace("HMD", "VCP")})
+                if orientation == "VMD":
+                    df = df.rename(columns={c: c.replace("VMD", "HCP")})
+                if c[-5:] == "_inph":
                     self.coilsInph.append(c)
-                elif c[-4:] == '_err':
+                elif c[-4:] == "_err":
                     self.coilsErr.append(c)
-                elif c[-5:] == '_quad':
+                elif c[-5:] == "_quad":
                     self.coilsQuad.append(c)
                 else:
                     self.coils.append(c)
-        
+
         # rename columns to lowercase
-        cols = ['x', 'y', 'elevation', 'latitude', 'longitude']
+        cols = ["x", "y", "elevation", "latitude", "longitude"]
         for col in cols:
             icol = df.columns.str.lower() == col
             if np.sum(icol) > 0:
@@ -386,69 +401,78 @@ class Survey(object):
                     df = df.rename(columns={ocol: col})
 
         # extracting x, y, elevation data
-        if 'x' not in df.columns:
-            df['x'] = np.arange(df.shape[0])
-        if 'y' not in df.columns:
-            df['y'] = 0
-        if 'elevation' not in df.columns:
-            df['elevation'] = 0
-        
+        if "x" not in df.columns:
+            df["x"] = np.arange(df.shape[0])
+        if "y" not in df.columns:
+            df["y"] = 0
+        if "elevation" not in df.columns:
+            df["elevation"] = 0
+
         # IMPORTANT! convert all Q columns to LIN ECa
         if len(self.coilsQuad) > 0:
-            print('Converting quadrature columns to LIN ECa. '
-                  'You can use "FSlin" or "Q" as forward model.')
+            print(
+                "Converting quadrature columns to LIN ECa. "
+                'You can use "FSlin" or "Q" as forward model.'
+            )
         for c in self.coilsInph:
-            if unit == 'ppm':
-                df[c] = df[c].values/1e3 # to put it in ppt
+            if unit == "ppm":
+                df[c] = df[c].values / 1e3  # to put it in ppt
         for c in self.coilsQuad:
             # as LIN ECa is faster but also is used when doing Q or QP based inversion
             coilName = c[:-5]
             info = self.getCoilInfo(coilName)
-            if unit == 'ppt':
-                values = 1 + 1j*df[c].values/1e3 # Q is in ppt (part per thousand) like GF-Instruments
-            elif unit == 'ppm':
-                values = 1 + 1j*df[c].values/1e6 # Q is in ppm (part per million) like GEM 2
-            df[coilName] = Q2eca(values, s=info['coilSeparation'], f=info['freq'])*1e3 # mS/m
+            if unit == "ppt":
+                values = (
+                    1 + 1j * df[c].values / 1e3
+                )  # Q is in ppt (part per thousand) like GF-Instruments
+            elif unit == "ppm":
+                values = (
+                    1 + 1j * df[c].values / 1e6
+                )  # Q is in ppm (part per million) like GEM 2
+            df[coilName] = (
+                Q2eca(values, s=info["coilSeparation"], f=info["freq"]) * 1e3
+            )  # mS/m
             self.coils.append(coilName)
-            
+
         # extraction of other attributes
         coilInfo = [self.getCoilInfo(c) for c in self.coils]
-        self.freqs = [a['freq'] for a in coilInfo]
-        self.hx = [a['height'] for a in coilInfo]
-        self.cspacing = [a['coilSeparation'] for a in coilInfo]
-        self.cpos = [a['orientation'] for a in coilInfo]
+        self.freqs = [a["freq"] for a in coilInfo]
+        self.hx = [a["height"] for a in coilInfo]
+        self.cspacing = [a["coilSeparation"] for a in coilInfo]
+        self.cpos = [a["orientation"] for a in coilInfo]
         self.df = df
         self.sensor = sensor
-        
+
         # setting projection if any
         if targetProjection is not None:
             self.convertFromCoord(targetProjection=targetProjection)
-        
+
     def getCoilInfo(self, arg):
         arg = arg.lower()
         orientation = arg[:3]
-        b = arg[3:].split('f')
+        b = arg[3:].split("f")
         coilSeparation = float(b[0])
         # NOTE could make this more flexible with regexp if h is before f and so on
         if len(b) > 1:
-            c = b[1].split('h')
+            c = b[1].split("h")
             freq = float(c[0])
             if len(c) > 1:
                 height = float(c[1])
             else:
                 height = 0
         else:
-            freq = 30000 # Hz default is not specified !!
+            freq = 30000  # Hz default is not specified !!
             height = 0
-        return {'orientation': orientation,
-                'coilSeparation': coilSeparation,
-                'freq': freq,
-                'height': height}
-        
-    
+        return {
+            "orientation": orientation,
+            "coilSeparation": coilSeparation,
+            "freq": freq,
+            "height": height,
+        }
+
     def removeCoil(self, icoil):
         """Remove coil by index.
-        
+
         Parameters
         ----------
         icoil : int
@@ -459,11 +483,10 @@ class Survey(object):
         del self.cspacing[icoil]
         del self.hx[icoil]
         del self.freqs[icoil]
-    
-    
+
     def filterRange(self, vmin=None, vmax=None):
         """Filter out measurements that are not between vmin and vmax.
-        
+
         Parameters
         ----------
         vmin : float, optional
@@ -480,28 +503,28 @@ class Survey(object):
         else:
             ie2 = np.ones(self.df.shape[0], dtype=bool)
         i2keep = ie1 & ie2
-        print('{:d}/{:d} data removed (filterRange).'.format(np.sum(~i2keep), len(i2keep)))
+        print(
+            "{:d}/{:d} data removed (filterRange).".format(np.sum(~i2keep), len(i2keep))
+        )
         self.df = self.df[i2keep].reset_index(drop=True)
-        
-        
+
     def rollingMean(self, window=3):
         """Perform a rolling mean on the data.
-        
+
         Parameters
         ----------
         window : int, optional
             Size of the windows for rolling mean.
         """
-        cols = ['x','y'] + self.coils + self.coilsInph
+        cols = ["x", "y"] + self.coils + self.coilsInph
         self.df[cols] = self.df[cols].rolling(window).mean()
         i2discard = self.df[self.coils].isna().any(axis=1)
         self.df = self.df[~i2discard]
-        print('dataset shrunk of {:d} measurements'.format(np.sum(i2discard)))        
-    
-    
+        print("dataset shrunk of {:d} measurements".format(np.sum(i2discard)))
+
     def filterPercentile(self, coil=None, qmin=None, qmax=None):
         """Filter out measurements based on percentile.
-        
+
         Parameters
         ----------
         coil : str, optional
@@ -519,18 +542,21 @@ class Survey(object):
         vmin = np.nanpercentile(val, qmin)
         vmax = np.nanpercentile(val, qmax)
         i2keep = (val > vmin) & (val < vmax)
-        print('{:d}/{:d} data removed (fitlerPercentile).'.format(np.sum(~i2keep), len(i2keep)))
+        print(
+            "{:d}/{:d} data removed (fitlerPercentile).".format(
+                np.sum(~i2keep), len(i2keep)
+            )
+        )
         self.df = self.df[i2keep]
-    
-    
+
     def filterDiff(self, coil=None, thresh=5):
         """Keep consecutive measurements when the difference between them
         is smaller than `thresh`.
-        
+
         Parameters
         ----------
         thresh : float, optional
-            Value of absolute consecutive difference above which the second 
+            Value of absolute consecutive difference above which the second
             data point will be discarded.
         coil : str, optional
             Coil on which to apply the processing.
@@ -539,14 +565,14 @@ class Survey(object):
             coil = self.coils[0]
         val = self.df[coil].values
         i2keep = np.r_[0, np.abs(np.diff(val))] < thresh
-        print('{:d}/{:d} data removed (filterDiff).'.format(np.sum(~i2keep), len(i2keep)))
+        print(
+            "{:d}/{:d} data removed (filterDiff).".format(np.sum(~i2keep), len(i2keep))
+        )
         self.df = self.df[i2keep]
-    
-    
-    def show(self, coil='all', ax=None, vmin=None, 
-             vmax=None, dist=False):
-        """ Show the data.
-        
+
+    def show(self, coil="all", ax=None, vmin=None, vmax=None, dist=False):
+        """Show the data.
+
         Parameters
         ----------
         coil : str, optional
@@ -561,27 +587,27 @@ class Survey(object):
             If `True` the true distance between points will be computed else
             the sample index is used as X index.
         """
-        if coil == 'all':
+        if coil == "all":
             cols = self.coils
         else:
             cols = coil
-        
+
         if ax is None:
             fig, ax = plt.subplots()
-     
+
         # interactive point selection
         self.iselect = np.zeros(self.df.shape[0], dtype=bool)
-        xpos = np.arange(self.df.shape[0]) # number of sample, not true distance
+        xpos = np.arange(self.df.shape[0])  # number of sample, not true distance
         if dist:
-            xy = self.df[['x','y']].values
-            distance = np.sqrt(np.sum(np.diff(xy, axis=0)**2, axis=1))
+            xy = self.df[["x", "y"]].values
+            distance = np.sqrt(np.sum(np.diff(xy, axis=0) ** 2, axis=1))
             xpos = np.r_[[0], np.cumsum(distance)]
-        
-        def setSelect(ie, boolVal): # pragma: no cover
+
+        def setSelect(ie, boolVal):  # pragma: no cover
             ipoints[ie] = boolVal
             self.iselect = ipoints
-    
-        def onpick(event): # pragma: no cover
+
+        def onpick(event):  # pragma: no cover
             xid = xpos[event.ind[0]]
             isame = xpos == xid
             if (ipoints[isame] == True).all():
@@ -600,34 +626,35 @@ class Survey(object):
                 killed.set_xdata(xtmp)
                 killed.set_ydata(ytmp)
             killed.figure.canvas.draw()
-    
+
         ax.set_title(coil)
-        caxs = ax.plot(xpos, self.df[cols].values, '.-', picker=True, pickradius=5)
+        caxs = ax.plot(xpos, self.df[cols].values, ".-", picker=True, pickradius=5)
         ax.legend(cols)
         ax.set_ylim([vmin, vmax])
-        ax.set_xlabel('Measurements')
+        ax.set_xlabel("Measurements")
         if dist:
-            ax.set_xlabel('Distance [m]')
-        if coil[-5:] == '_inph':
-            ax.set_ylabel('Inphase [ppt]')
+            ax.set_xlabel("Distance [m]")
+        if coil[-5:] == "_inph":
+            ax.set_ylabel("Inphase [ppt]")
         else:
-            ax.set_ylabel('ECa [mS/m]')
+            ax.set_ylabel("ECa [mS/m]")
         for cax in caxs:
-            cax.figure.canvas.mpl_connect('pick_event', onpick)        
-        killed, = ax.plot([],[],'rx')
+            cax.figure.canvas.mpl_connect("pick_event", onpick)
+        (killed,) = ax.plot([], [], "rx")
         x = xpos
         y = self.df[cols].values
         ipoints = np.zeros(len(x), dtype=bool)
 
-
-    def dropSelected(self): # pragma: no cover
+    def dropSelected(self):  # pragma: no cover
         i2keep = ~self.iselect
-        print('{:d}/{:d} data removed (filterDiff).'.format(np.sum(~i2keep), len(i2keep)))
+        print(
+            "{:d}/{:d} data removed (filterDiff).".format(np.sum(~i2keep), len(i2keep))
+        )
         self.df = self.df[i2keep].reset_index(drop=True)
-    
-    def convertFromCoord(self, targetProjection='EPSG:3395'): # British Grid 1936
+
+    def convertFromCoord(self, targetProjection="EPSG:3395"):  # British Grid 1936
         """Convert coordinates string (NMEA or DMS) to selected CRS projection.
-    
+
         Parameters
         ----------
         targetProjection : str, optional
@@ -635,16 +662,14 @@ class Survey(object):
             for the British Grid.
         """
         self.projection = targetProjection
-        if 'latitude' in self.df.columns.str.lower().tolist():
+        if "latitude" in self.df.columns.str.lower().tolist():
             self.df = convertFromCoord(self.df, targetProjection)
         else:
             print('No "latitude"/"longitude" columns found.')
 
-
-        
     def showDist(self, coil=None, nbins=20, vmin=None, vmax=None, ax=None):
         """Display a histogram of the recorded values.
-        
+
         Parameters
         ----------
         coil : str or list of str, optional
@@ -662,7 +687,7 @@ class Survey(object):
         # check arguments
         if coil is None:
             coils = self.coils
-        elif type(coil) == type('a'):
+        elif type(coil) == type("a"):
             coils = [coil]
         else:
             coils = coil
@@ -671,27 +696,45 @@ class Survey(object):
         if vmin is None or vmax is None:
             val = np.hstack(self.df[coils].values).flatten()
             if vmin is None:
-                vmin = np.nanpercentile(val, 2) # taking percentile to avoid extreme values
+                vmin = np.nanpercentile(
+                    val, 2
+                )  # taking percentile to avoid extreme values
             if vmax is None:
                 vmax = np.nanpercentile(val, 98)
-        
+
         # plotting histogram
-        bins = np.linspace(vmin, vmax, nbins+1) # for 20 bins, we need 21 bin limits
+        bins = np.linspace(vmin, vmax, nbins + 1)  # for 20 bins, we need 21 bin limits
         for c in coils:
             cax = ax.plot([], [])
             color = cax[0].get_color()
-            ax.hist(self.df[c].values, bins=bins, label=c, color=color, 
-                    alpha=0.3, edgecolor=color, lw=3)
+            ax.hist(
+                self.df[c].values,
+                bins=bins,
+                label=c,
+                color=color,
+                alpha=0.3,
+                edgecolor=color,
+                lw=3,
+            )
         ax.legend()
-        ax.set_xlabel('Values')
-        ax.set_ylabel('Count')
-        
-        
-    
-    def showMap(self, coil=None, contour=False, ax=None, vmin=None, vmax=None,
-                pts=False, cmap='viridis_r', xlab='x', ylab='y', levels=[]):
-        """ Display a map of the measurements.
-        
+        ax.set_xlabel("Values")
+        ax.set_ylabel("Count")
+
+    def showMap(
+        self,
+        coil=None,
+        contour=False,
+        ax=None,
+        vmin=None,
+        vmax=None,
+        pts=False,
+        cmap="viridis_r",
+        xlab="x",
+        ylab="y",
+        levels=[],
+    ):
+        """Display a map of the measurements.
+
         Parameters
         ----------
         coil : str, optional
@@ -715,10 +758,10 @@ class Survey(object):
         """
         if coil is None:
             coil = self.coils[0]
-#        if coil == 'all': # trick for ui
-#            coil = self.coils[-1]
-        x = self.df['x'].values
-        y = self.df['y'].values
+        #        if coil == 'all': # trick for ui
+        #            coil = self.coils[-1]
+        x = self.df["x"].values
+        y = self.df["y"].values
         val = self.df[coil].values
         inan = ~np.isnan(val)
         val = val[inan]
@@ -737,9 +780,11 @@ class Survey(object):
             if len(levels) == 0:
                 levels = np.linspace(vmin, vmax, 7)
             # cax = ax.tricontourf(x, y, val, levels=levels, extend='both', cmap=cmap)
-            cax = tricontourf_clipped(x, y, val, ax=ax, levels=levels, extend='both', cmap=cmap)
+            cax = tricontourf_clipped(
+                x, y, val, ax=ax, levels=levels, extend="both", cmap=cmap
+            )
             if pts is True:
-                ax.plot(x, y, 'k+')
+                ax.plot(x, y, "k+")
         else:
             cax = ax.scatter(x, y, s=15, c=val, vmin=vmin, vmax=vmax, cmap=cmap)
         ax.set_xlabel(xlab)
@@ -747,21 +792,37 @@ class Survey(object):
         if len(x) > 0:
             ax.set_xlim([np.nanmin(x), np.nanmax(x)])
             ax.set_ylim([np.nanmin(y), np.nanmax(y)])
-        ax.get_xaxis().get_major_formatter().set_useOffset(False) # prevent exponent notation
+        ax.get_xaxis().get_major_formatter().set_useOffset(
+            False
+        )  # prevent exponent notation
         ax.get_yaxis().get_major_formatter().set_useOffset(False)
         ax.get_xaxis().get_major_formatter().set_scientific(False)
         ax.get_yaxis().get_major_formatter().set_scientific(False)
-        if coil[-5:] == '_inph':
-            fig.colorbar(cax, ax=ax, label='Inphase [ppt]')
+        if coil[-5:] == "_inph":
+            fig.colorbar(cax, ax=ax, label="Inphase [ppt]")
         else:
-            fig.colorbar(cax, ax=ax, label='ECa [mS/m]')
-        
+            fig.colorbar(cax, ax=ax, label="ECa [mS/m]")
 
-    def saveMap(self, fname, coils=None, nx=100, ny=100, method='linear',
-                xmin=None, xmax=None, ymin=None, ymax=None, color=False,
-                cmap='viridis_r', vmin=None, vmax=None, nlevel=14, coil=None):
+    def saveMap(
+        self,
+        fname,
+        coils=None,
+        nx=100,
+        ny=100,
+        method="linear",
+        xmin=None,
+        xmax=None,
+        ymin=None,
+        ymax=None,
+        color=False,
+        cmap="viridis_r",
+        vmin=None,
+        vmax=None,
+        nlevel=14,
+        coil=None,
+    ):
         """Save a georeferenced raster TIFF file.
-        
+
         Parameters
         ----------
         fname : str
@@ -798,19 +859,23 @@ class Survey(object):
             Number of level in the colormap. Default 7.
         """
         if coil is not None:
-            warnings.warn('The argument is deprecated and will be removed in future version, use "coils" instead.',
-                      DeprecationWarning)
+            warnings.warn(
+                'The argument is deprecated and will be removed in future version, use "coils" instead.',
+                DeprecationWarning,
+            )
             coils = [coil]
         try:
             import rasterio
             from rasterio.transform import from_origin
         except:
-            raise ImportError('rasterio is needed to save georeferenced .tif file. Install it with "pip install rasterio"')
-        
+            raise ImportError(
+                'rasterio is needed to save georeferenced .tif file. Install it with "pip install rasterio"'
+            )
+
         if coils is None:
             coils = self.coils
-        xknown = self.df['x'].values
-        yknown = self.df['y'].values
+        xknown = self.df["x"].values
+        yknown = self.df["y"].values
         if xmin is None:
             xmin = np.min(xknown)
         if xmax is None:
@@ -819,12 +884,11 @@ class Survey(object):
             ymin = np.min(yknown)
         if ymax is None:
             ymax = np.max(yknown)
-        X, Y = np.meshgrid(np.linspace(xmin, xmax, nx),
-                           np.linspace(ymin, ymax, ny))
+        X, Y = np.meshgrid(np.linspace(xmin, xmax, nx), np.linspace(ymin, ymax, ny))
         x, y = X.flatten(), Y.flatten()
 
         # compute convex hull
-        inside = np.ones(nx*ny)
+        inside = np.ones(nx * ny)
         # inside2 = clipConvexHull(xknown, yknown, x, y, inside)
         inside2 = clipConcaveHull(xknown, yknown, x, y, inside)
         ie = np.isnan(inside2).reshape(X.shape)
@@ -832,16 +896,24 @@ class Survey(object):
         layers = []
         for coil in coils:
             values = self.df[coil].values
-            if method == 'idw':
+            if method == "idw":
                 z = idw(x, y, xknown, yknown, values)
                 z = z.reshape(X.shape)
-            elif method == 'kriging':
+            elif method == "kriging":
                 from pykrige.ok import OrdinaryKriging
+
                 gridx = np.linspace(xmin, xmax, nx)
                 gridy = np.linspace(ymin, ymax, ny)
-                OK = OrdinaryKriging(xknown, yknown, values, variogram_model='linear',
-                                    verbose=True, enable_plotting=False, nlags=25)
-                z, ss = OK.execute('grid', gridx, gridy)
+                OK = OrdinaryKriging(
+                    xknown,
+                    yknown,
+                    values,
+                    variogram_model="linear",
+                    verbose=True,
+                    enable_plotting=False,
+                    nlags=25,
+                )
+                z, ss = OK.execute("grid", gridx, gridy)
             else:
                 z = griddata(np.c_[xknown, yknown], values, (X, Y), method=method)
             z[ie] = np.nan
@@ -851,14 +923,16 @@ class Survey(object):
 
         # distance between corners
         dist0 = np.abs(xmax - xmin)
-        dist1 = np.abs(ymax - ymin)        
-        yscale = dist1/Z.shape[0]
-        xscale = dist0/Z.shape[1]
+        dist1 = np.abs(ymax - ymin)
+        yscale = dist1 / Z.shape[0]
+        xscale = dist0 / Z.shape[1]
 
         # compute affine transform
-        tOffsetScaling = from_origin(xmin - xscale/2, ymax - yscale/2, xscale, yscale)
+        tOffsetScaling = from_origin(
+            xmin - xscale / 2, ymax - yscale / 2, xscale, yscale
+        )
         tt = tOffsetScaling
-        
+
         if color is True:  # save one file per coil
             for j, coil in enumerate(coils):
                 Z = layers[j]
@@ -868,33 +942,51 @@ class Survey(object):
                     vmax = np.nanpercentile(Z.flatten(), 98)
                 norm = plt.Normalize(vmin=vmin, vmax=vmax)
                 Z = plt.get_cmap(cmap, nlevel)(norm(Z))
-                Z = 255*Z
-                Z = Z.astype('uint8')
+                Z = 255 * Z
+                Z = Z.astype("uint8")
                 for i in range(4):
                     Z[np.fliplr(ie.T).T, i] = 0
-            
-                with rasterio.open(fname.replace('.tif', '_' + coil + '.tif'), 'w',
-                            driver='GTiff',
-                            height=Z.shape[0],
-                            width=Z.shape[1], count=4, dtype=Z.dtype,
-                            crs=self.projection, transform=tt) as dst:
+
+                with rasterio.open(
+                    fname.replace(".tif", "_" + coil + ".tif"),
+                    "w",
+                    driver="GTiff",
+                    height=Z.shape[0],
+                    width=Z.shape[1],
+                    count=4,
+                    dtype=Z.dtype,
+                    crs=self.projection,
+                    transform=tt,
+                ) as dst:
                     for i in range(4):  # RGB + mask
-                        dst.write(Z[:,:,i], i+1)
+                        dst.write(Z[:, :, i], i + 1)
         else:
-            with rasterio.open(fname, 'w',
-                               driver='GTiff',
-                               height=Z.shape[0],
-                               width=Z.shape[1], count=len(layers), dtype=Z.dtype,
-                               crs=self.projection, transform=tt) as dst:
+            with rasterio.open(
+                fname,
+                "w",
+                driver="GTiff",
+                height=Z.shape[0],
+                width=Z.shape[1],
+                count=len(layers),
+                dtype=Z.dtype,
+                crs=self.projection,
+                transform=tt,
+            ) as dst:
                 for i, layer in enumerate(layers):
-                    dst.write(layer, i+1)
-                        
-    
-    
-    def gridData(self, nx=100, ny=100, method='nearest', xmin=None, xmax=None,
-                 ymin=None, ymax=None):
-        """ Grid data.
-        
+                    dst.write(layer, i + 1)
+
+    def gridData(
+        self,
+        nx=100,
+        ny=100,
+        method="nearest",
+        xmin=None,
+        xmax=None,
+        ymin=None,
+        ymax=None,
+    ):
+        """Grid data.
+
         Parameters
         ----------
         nx : int, optional
@@ -913,8 +1005,8 @@ class Survey(object):
             Interpolation method (nearest, cubic or linear see
             `scipy.interpolate.griddata`) or IDW (default).
         """
-        xknown = self.df['x'].values
-        yknown = self.df['y'].values
+        xknown = self.df["x"].values
+        yknown = self.df["y"].values
         if xmin is None:
             xmin = np.min(xknown)
         if xmax is None:
@@ -923,42 +1015,52 @@ class Survey(object):
             ymin = np.min(yknown)
         if ymax is None:
             ymax = np.max(yknown)
-        X, Y = np.meshgrid(np.linspace(xmin, xmax, nx),
-                           np.linspace(ymin, ymax, ny))
-        
+        X, Y = np.meshgrid(np.linspace(xmin, xmax, nx), np.linspace(ymin, ymax, ny))
+
         # check if data are all on a line (so 1D, not 2D)
         if len(np.unique(yknown)) > 2:
-            inside = np.ones(nx*ny)
-            inside2 = clipConvexHull(self.df['x'].values,
-                                    self.df['y'].values,
-                                    X.flatten(), Y.flatten(), inside)
+            inside = np.ones(nx * ny)
+            inside2 = clipConvexHull(
+                self.df["x"].values,
+                self.df["y"].values,
+                X.flatten(),
+                Y.flatten(),
+                inside,
+            )
             ie = ~np.isnan(inside2)
         else:
-            ie = np.ones(nx*ny, dtype=bool)
+            ie = np.ones(nx * ny, dtype=bool)
         df = pd.DataFrame()
-        df['x'] = X.flatten()
-        df['y'] = Y.flatten()
-        cols = self.coils + self.coilsInph + ['elevation']
+        df["x"] = X.flatten()
+        df["y"] = Y.flatten()
+        cols = self.coils + self.coilsInph + ["elevation"]
         for col in cols:
             values = self.df[col].values
-            if method == 'idw':
+            if method == "idw":
                 z = idw(X.flatten(), Y.flatten(), xknown, yknown, values)
-            elif method == 'kriging':
+            elif method == "kriging":
                 from pykrige.ok import OrdinaryKriging
+
                 gridx = np.linspace(xmin, xmax, nx)
                 gridy = np.linspace(ymin, ymax, ny)
-                OK = OrdinaryKriging(xknown, yknown, values, variogram_model='linear',
-                                     verbose=True, enable_plotting=False, nlags=25)
-                z, ss = OK.execute('grid', gridx, gridy)
+                OK = OrdinaryKriging(
+                    xknown,
+                    yknown,
+                    values,
+                    variogram_model="linear",
+                    verbose=True,
+                    enable_plotting=False,
+                    nlags=25,
+                )
+                z, ss = OK.execute("grid", gridx, gridy)
             else:
                 z = griddata(np.c_[xknown, yknown], values, (X, Y), method=method)
             df[col] = z.flatten()
         self.df = df[ie]
-        
-    
+
     def crossOverPointsError(self, coil=None, ax=None, dump=print, minDist=1):
-        """ Build an error model based on the cross-over points.
-        
+        """Build an error model based on the cross-over points.
+
         Parameters
         ----------
         coil : str, optional
@@ -974,65 +1076,66 @@ class Survey(object):
         if coil is None:
             coil = self.coils[0]
         df = self.df
-        dist = cdist(df[['x', 'y']].values,
-                     df[['x', 'y']].values)
-        ix, iy = np.where(((dist < minDist) & (dist > 0))) # 0 == same point
-        ifar = (ix - iy) > 200 # they should be at least 200 measuremens apart
+        dist = cdist(df[["x", "y"]].values, df[["x", "y"]].values)
+        ix, iy = np.where(((dist < minDist) & (dist > 0)))  # 0 == same point
+        ifar = (ix - iy) > 200  # they should be at least 200 measuremens apart
         ix, iy = ix[ifar], iy[ifar]
-        print('found', len(ix), '/', df.shape[0], 'crossing points')
-        
+        print("found", len(ix), "/", df.shape[0], "crossing points")
+
         if len(ix) < 10:
-            dump('None or too few colocated measurements found for error model.')
+            dump("None or too few colocated measurements found for error model.")
             return
-        
+
         val = df[coil].values
         x = val[ix]
         y = val[iy]
-        means = np.mean(np.c_[x,y], axis=1)
+        means = np.mean(np.c_[x, y], axis=1)
         error = np.abs(x - y)
-        
+
         # bin data (constant number)
-        nbins = 30 # number of data per bin
-        end = int(np.floor(len(means)/nbins)*nbins)
+        nbins = 30  # number of data per bin
+        end = int(np.floor(len(means) / nbins) * nbins)
         errorBinned = error[:end].reshape((-1, nbins)).mean(axis=1)
         meansBinned = means[:end].reshape((-1, nbins)).mean(axis=1)
-        
+
         # bin data (constant width)
         # errorBinned, binEdges, _ = binned_statistic(
         #         means, error, 'mean', bins=20)
         # meansBinned = binEdges[:-1] + np.diff(binEdges)
-        
 
         # compute model
         inan = ~np.isnan(meansBinned) & ~np.isnan(errorBinned)
         inan = inan & (meansBinned > 0) & (errorBinned > 0)
         slope, intercept, r_value, p_value, std_err = linregress(
-                np.log10(meansBinned[inan]), np.log10(errorBinned[inan]))
-        
-        self.df[coil + '_err'] = intercept + slope * self.df[coil]
-            
+            np.log10(meansBinned[inan]), np.log10(errorBinned[inan])
+        )
+
+        self.df[coil + "_err"] = intercept + slope * self.df[coil]
+
         # plot
         if ax is None:
             fig, ax = plt.subplots()
         ax.set_title(coil)
-        ax.loglog(means, error, '.')
-        ax.loglog(meansBinned, errorBinned, 'o')
-        predError = 10**(intercept + slope * np.log10(means))
-        if slope < 0.01 or 10**intercept < 0.01: # switch to scientific notation
-            eq = r'$\epsilon = {:.2e} \times \sigma^{{{:.2e}}}$'.format(10**intercept, slope)
+        ax.loglog(means, error, ".")
+        ax.loglog(meansBinned, errorBinned, "o")
+        predError = 10 ** (intercept + slope * np.log10(means))
+        if slope < 0.01 or 10**intercept < 0.01:  # switch to scientific notation
+            eq = r"$\epsilon = {:.2e} \times \sigma^{{{:.2e}}}$".format(
+                10**intercept, slope
+            )
         else:
-            eq = r'$\epsilon = {:.2f} \times \sigma^{{{:.2f}}}$'.format(10**intercept, slope)
+            eq = r"$\epsilon = {:.2f} \times \sigma^{{{:.2f}}}$".format(
+                10**intercept, slope
+            )
         isort = np.argsort(means)
-        ax.loglog(means[isort], predError[isort], 'k-', label=eq)
+        ax.loglog(means[isort], predError[isort], "k-", label=eq)
         ax.legend()
-        ax.set_xlabel(r'Mean $\sigma_a$ [mS/m]')
-        ax.set_ylabel(r'Error $\epsilon$ [mS/m]')
-     
-    
-    
+        ax.set_xlabel(r"Mean $\sigma_a$ [mS/m]")
+        ax.set_ylabel(r"Error $\epsilon$ [mS/m]")
+
     def plotCrossOverMap(self, coil=None, ax=None, minDist=1):
         """Plot the map of the cross-over points for error model.
-        
+
         Parameters
         ----------
         coil : str, optional
@@ -1046,105 +1149,120 @@ class Survey(object):
         if coil is None:
             coil = self.coils[0]
         df = self.df
-        dist = cdist(df[['x', 'y']].values,
-                     df[['x', 'y']].values)
-        ix, iy = np.where(((dist < minDist) & (dist > 0))) # 0 == same point
-        ifar = (ix - iy) > 200 # they should be at least 200 measuremens apart
+        dist = cdist(df[["x", "y"]].values, df[["x", "y"]].values)
+        ix, iy = np.where(((dist < minDist) & (dist > 0)))  # 0 == same point
+        ifar = (ix - iy) > 200  # they should be at least 200 measuremens apart
         ix, iy = ix[ifar], iy[ifar]
-        print('found', len(ix), '/', df.shape[0], 'crossing points')
-        
+        print("found", len(ix), "/", df.shape[0], "crossing points")
+
         # plot cross-over points
-        xcoord = df['x'].values
-        ycoord = df['y'].values
+        xcoord = df["x"].values
+        ycoord = df["y"].values
         icross = np.unique(np.r_[ix, iy])
-        
+
         if ax is None:
             fig1, ax = plt.subplots()
         ax.set_title(coil)
-        ax.plot(xcoord, ycoord, '.')
-        ax.plot(xcoord[icross], ycoord[icross], 'ro', label='crossing points')
-        ax.set_xlabel('x [m]')
-        ax.set_ylabel('y [m]')
-        ax.get_xaxis().get_major_formatter().set_useOffset(False) # prevent exponent notation
+        ax.plot(xcoord, ycoord, ".")
+        ax.plot(xcoord[icross], ycoord[icross], "ro", label="crossing points")
+        ax.set_xlabel("x [m]")
+        ax.set_ylabel("y [m]")
+        ax.get_xaxis().get_major_formatter().set_useOffset(
+            False
+        )  # prevent exponent notation
         ax.get_yaxis().get_major_formatter().set_useOffset(False)
         ax.get_xaxis().get_major_formatter().set_scientific(False)
         ax.get_yaxis().get_major_formatter().set_scientific(False)
 
-
-    
     def gfCorrection(self, calib):
         """Converting GF calibrated ECa to LIN ECa.
-        
+
         GF instruments directly map the quadrature values measured to ECa using
         a linear calibration. This allows to have ECa values representative of
         the ground EC even when the device is operated at 1 m above the ground
         for instance. However, this calibration gets in the way when modelling
         the EM response based on physical equations for the inversion. Hence,
-        we recommend to apply a correction and convert back the 'calibrated ECa' 
+        we recommend to apply a correction and convert back the 'calibrated ECa'
         to LIN ECa. This function contains the retro-engineered coefficients
-        of the GF calibration. The ECa values are first uncalibrated back to 
+        of the GF calibration. The ECa values are first uncalibrated back to
         quadrature values and then converted back to ECa using the LIN approximation.
-        
+
         Parameters
         ----------
         calib : str
             Name of the calibration used. Either 'F-0m' of 'F-1m'.
         """
         df = self.df.copy()
-        coils = ['{:s}{:.2f}'.format(a.upper(),b) for a,b in zip(self.cpos, self.cspacing)]
-        if calib == 'F-0m':
-            gfcoefs = {'HCP1.48': 24.87076856,
-                       'HCP2.82': 7.34836983,
-                       'HCP4.49': 3.18322873,
-                       'VCP1.48': 23.96851467,
-                       'VCP2.82': 6.82559412,
-                       'VCP4.49': 2.81033124,
-                       'HCP0.32': 169.35849385,
-                       'HCP0.71': 35.57031603,
-                       'HCP1.18': 13.42529324,
-                       'VCP0.32': 167.10523718,
-                       'VCP0.71': 34.50404729,
-                       'VCP1.18': 12.744378,
-                       'HCP0.20': 515.4639175,
-                       'HCP0.33': 190.839695,
-                       'HCP0.50': 84.03361345,
-                       'HCP0.72': 41.32231405,
-                       'HCP1.03': 20.661157025,
-                       'HCP1.50': 10.1419878296,
-                       'VCP0.20': 515.46391753,
-                       'VCP0.33': 190.47619048,
-                       'VCP0.50': 83.33333333,
-                       'VCP0.72': 40.6504065,
-                       'VCP1.03': 20.08032129,
-                       'VCP1.50': 9.64320154}
+        coils = [
+            "{:s}{:.2f}".format(a.upper(), b) for a, b in zip(self.cpos, self.cspacing)
+        ]
+        if calib == "F-0m":
+            gfcoefs = {
+                "HCP1.48": 24.87076856,
+                "HCP2.82": 7.34836983,
+                "HCP4.49": 3.18322873,
+                "VCP1.48": 23.96851467,
+                "VCP2.82": 6.82559412,
+                "VCP4.49": 2.81033124,
+                "HCP0.32": 169.35849385,
+                "HCP0.71": 35.57031603,
+                "HCP1.18": 13.42529324,
+                "VCP0.32": 167.10523718,
+                "VCP0.71": 34.50404729,
+                "VCP1.18": 12.744378,
+                "HCP0.20": 515.4639175,
+                "HCP0.33": 190.839695,
+                "HCP0.50": 84.03361345,
+                "HCP0.72": 41.32231405,
+                "HCP1.03": 20.661157025,
+                "HCP1.50": 10.1419878296,
+                "VCP0.20": 515.46391753,
+                "VCP0.33": 190.47619048,
+                "VCP0.50": 83.33333333,
+                "VCP0.72": 40.6504065,
+                "VCP1.03": 20.08032129,
+                "VCP1.50": 9.64320154,
+            }
 
-                       
             for i, coil in enumerate(coils):
-                qvalues = 0+df[self.coils[i]].values/gfcoefs[coil]*1e-3j
-                df.loc[:, self.coils[i]] = Q2eca(qvalues, self.cspacing[i], f=self.freqs[i])*1000 # mS/m
-        if calib == 'F-1m':
-            gfcoefs = {'HCP1.48': 43.714823,
-                       'HCP2.82': 9.22334343,
-                       'HCP4.49': 3.51201955,
-                       'VCP1.48': 77.90907085,
-                       'VCP2.82': 14.02757873,
-                       'VCP4.49': 4.57001088}
-            ''' from mS/m to Q in ppt using GF calibration
+                qvalues = 0 + df[self.coils[i]].values / gfcoefs[coil] * 1e-3j
+                df.loc[:, self.coils[i]] = (
+                    Q2eca(qvalues, self.cspacing[i], f=self.freqs[i]) * 1000
+                )  # mS/m
+        if calib == "F-1m":
+            gfcoefs = {
+                "HCP1.48": 43.714823,
+                "HCP2.82": 9.22334343,
+                "HCP4.49": 3.51201955,
+                "VCP1.48": 77.90907085,
+                "VCP2.82": 14.02757873,
+                "VCP4.49": 4.57001088,
+            }
+            """ from mS/m to Q in ppt using GF calibration
             from Q (not in ppt) to ECa LIN using Q2eca
-            '''
+            """
             for i, coil in enumerate(coils):
-                qvalues = 0+df[self.coils[i]].values/gfcoefs[coil]*1e-3j # in part per thousand
-                df.loc[:, self.coils[i]] = Q2eca(qvalues, self.cspacing[i], f=self.freqs[i])*1000
+                qvalues = (
+                    0 + df[self.coils[i]].values / gfcoefs[coil] * 1e-3j
+                )  # in part per thousand
+                df.loc[:, self.coils[i]] = (
+                    Q2eca(qvalues, self.cspacing[i], f=self.freqs[i]) * 1000
+                )
         self.df = df
-        print('gfCorrection: {:s} calibrated ECa converted to LIN ECa'.format(calib))
-    
-    
-    
-    def importGF(self, fnameLo=None, fnameHi=None, device='CMD Mini-Explorer',
-                 hx=0, calib=None, targetProjection=None):
+        print("gfCorrection: {:s} calibrated ECa converted to LIN ECa".format(calib))
+
+    def importGF(
+        self,
+        fnameLo=None,
+        fnameHi=None,
+        device="CMD Mini-Explorer",
+        hx=0,
+        calib=None,
+        targetProjection=None,
+    ):
         """Import GF instrument data with Lo and Hi file mode. If spatial data
         a regridding will be performed to match the data.
-        
+
         Parameters
         ----------
         fnameLo : str
@@ -1158,7 +1276,7 @@ class Survey(object):
             different from the 'calib' used. Data can be collected at 1 m (hx=1)
             but using the 'F-0m' calibration.
         calib : str, optional
-            Calibration used. Either 'F-0m' or 'F-1m'. If specified, the 
+            Calibration used. Either 'F-0m' or 'F-1m'. If specified, the
             `gfCorrection()` function will be called and ECa values will be
             converted to LIN ECa (this is recommended for inversion).
         targetProjection : str, optional
@@ -1168,89 +1286,116 @@ class Survey(object):
             is done using WGS84 latitude and longitude.
         """
         if fnameLo is None and fnameHi is None:
-            raise ValueError('You must specify at least one of fnameLo or fnameHi.')
-        if (fnameLo is not None) and (type(fnameLo) == type('a')):
-            self.name = os.path.basename(fnameLo)[:-4] # to remove .dat
-        elif type(fnameHi) == type('a'):
+            raise ValueError("You must specify at least one of fnameLo or fnameHi.")
+        if (fnameLo is not None) and (type(fnameLo) == type("a")):
+            self.name = os.path.basename(fnameLo)[:-4]  # to remove .dat
+        elif type(fnameHi) == type("a"):
             self.name = os.path.basename(fnameHi)[:-4]
         else:
-            self.name = 'MySurvey'
-            
-        if device == 'CMD Mini-Explorer':
+            self.name = "MySurvey"
+
+        if device == "CMD Mini-Explorer":
             freq = 30000
             csep = [0.32, 0.71, 1.18]
-        elif device == 'CMD Explorer':
+        elif device == "CMD Explorer":
             freq = 10000
             csep = [1.48, 2.82, 4.49]
-        elif device == 'CMD Mini-Explorer 6L':
+        elif device == "CMD Mini-Explorer 6L":
             freq = 30000
             csep = [0.20, 0.33, 0.50, 0.72, 1.03, 1.50]
         else:
-            raise ValueError('Device ' + device + ' unknown.')
+            raise ValueError("Device " + device + " unknown.")
 
-        loCols = ['VCP{:.2f}'.format(a) for a in csep]
-        loCols += [a + '_inph' for a in loCols]
-        hiCols = ['HCP{:.2f}'.format(a) for a in csep]
-        hiCols += [a + '_inph' for a in hiCols]
+        loCols = ["VCP{:.2f}".format(a) for a in csep]
+        loCols += [a + "_inph" for a in loCols]
+        hiCols = ["HCP{:.2f}".format(a) for a in csep]
+        hiCols += [a + "_inph" for a in hiCols]
         if len(csep) > 3:
-            cols = ['Cond.1[mS/m]', 'Cond.2[mS/m]', 'Cond.3[mS/m]',
-                    'Cond.4[mS/m]', 'Cond.5[mS/m]', 'Cond.6[mS/m]',
-                    'Inph.1[ppt]', 'Inph.2[ppt]', 'Inph.3[ppt]',
-                    'Inph.4[ppt]', 'Inph.5[ppt]', 'Inph.6[ppt]']
+            cols = [
+                "Cond.1[mS/m]",
+                "Cond.2[mS/m]",
+                "Cond.3[mS/m]",
+                "Cond.4[mS/m]",
+                "Cond.5[mS/m]",
+                "Cond.6[mS/m]",
+                "Inph.1[ppt]",
+                "Inph.2[ppt]",
+                "Inph.3[ppt]",
+                "Inph.4[ppt]",
+                "Inph.5[ppt]",
+                "Inph.6[ppt]",
+            ]
             n = 6
         else:
-            cols = ['Cond.1[mS/m]', 'Cond.2[mS/m]', 'Cond.3[mS/m]',
-                    'Inph.1[ppt]', 'Inph.2[ppt]', 'Inph.3[ppt]']
+            cols = [
+                "Cond.1[mS/m]",
+                "Cond.2[mS/m]",
+                "Cond.3[mS/m]",
+                "Inph.1[ppt]",
+                "Inph.2[ppt]",
+                "Inph.3[ppt]",
+            ]
             n = 3
-        
+
         def harmonizeHeaders(df):
             x = df.columns.values
             tmp = []
             for a in x:
-                tmp.append(a.replace(' [','[') # when dowloaded from usb
-                            .replace('Cond1.','Cond.1') # when downloaded from usb and manual
-                            .replace('Cond2.','Cond.2')
-                            .replace('Cond3.','Cond.3')
-                            .replace('Cond4.','Cond.4')
-                            .replace('Cond5.','Cond.5')
-                            .replace('Cond6.','Cond.6')
-                          )
+                tmp.append(
+                    a.replace(" [", "[")  # when dowloaded from usb
+                    .replace("Cond1.", "Cond.1")  # when downloaded from usb and manual
+                    .replace("Cond2.", "Cond.2")
+                    .replace("Cond3.", "Cond.3")
+                    .replace("Cond4.", "Cond.4")
+                    .replace("Cond5.", "Cond.5")
+                    .replace("Cond6.", "Cond.6")
+                )
             df = df.rename(columns=dict(zip(x, tmp)))
             return df
-        
+
         if fnameLo is not None:
-            loFile = pd.read_csv(fnameLo, sep='\t')
+            loFile = pd.read_csv(fnameLo, sep="\t")
             loFile = harmonizeHeaders(loFile)
-            loFile = loFile.rename(columns={'Latitude': 'latitude', 'Longitude': 'longitude'})
+            loFile = loFile.rename(
+                columns={"Latitude": "latitude", "Longitude": "longitude"}
+            )
             loFile = loFile.rename(columns=dict(zip(cols, loCols)))
         if fnameHi is not None:
-            hiFile = pd.read_csv(fnameHi, sep='\t')
+            hiFile = pd.read_csv(fnameHi, sep="\t")
             hiFile = harmonizeHeaders(hiFile)
-            hiFile = hiFile.rename(columns={'Latitude': 'latitude', 'Longitude': 'longitude'})
+            hiFile = hiFile.rename(
+                columns={"Latitude": "latitude", "Longitude": "longitude"}
+            )
             hiFile = hiFile.rename(columns=dict(zip(cols, hiCols)))
 
         if fnameLo is not None and fnameHi is not None:
-            if 'latitude' not in loFile.columns and 'latitude' not in hiFile.columns:
+            if "latitude" not in loFile.columns and "latitude" not in hiFile.columns:
                 if loFile.shape[0] == hiFile.shape[0]:
-                    print('importGF: joining on rows.')
+                    print("importGF: joining on rows.")
                     df = loFile[loCols].join(hiFile[hiCols])
-                    df['x'] = np.arange(df.shape[0])
-                    df['y'] = 0
+                    df["x"] = np.arange(df.shape[0])
+                    df["y"] = 0
                 else:
                     df = None
-                    raise ValueError('Can not join the dataframe as they have different lengths: {:d} and {:d}'.format(loFile.shape[0], hiFile.shape[0]))
+                    raise ValueError(
+                        "Can not join the dataframe as they have different lengths: {:d} and {:d}".format(
+                            loFile.shape[0], hiFile.shape[0]
+                        )
+                    )
             else:
-                print('Using nearest neighbours to assign values to all merged positions.')
+                print(
+                    "Using nearest neighbours to assign values to all merged positions."
+                )
                 # transformation of NMEA to x, y coordinates
                 loFile = convertFromCoord(loFile, targetProjection)
                 hiFile = convertFromCoord(hiFile, targetProjection)
-                
+
                 # regridding using nearest neighbour
                 df = pd.concat([loFile, hiFile], sort=False).reset_index(drop=True)
                 ie = np.zeros(df.shape[0], dtype=bool)
-                ie[:loFile.shape[0]] = True
-                pointsLo = loFile[['x','y']].values
-                pointsHi = hiFile[['x','y']].values
+                ie[: loFile.shape[0]] = True
+                pointsLo = loFile[["x", "y"]].values
+                pointsHi = hiFile[["x", "y"]].values
                 for col in loCols:
                     values = loFile[col].values
                     interpolator = NearestNDInterpolator(pointsLo, values)
@@ -1259,191 +1404,216 @@ class Survey(object):
                     values = hiFile[col].values
                     interpolator = NearestNDInterpolator(pointsHi, values)
                     df.loc[ie, col] = interpolator(pointsLo)
-                    
+
             coils = loCols[:n] + hiCols[:n]
             coilsInph = loCols[n:] + hiCols[n:]
         elif fnameLo is not None:
             df = loFile
-            df['x'] = np.arange(df.shape[0])
-            df['y'] = 0
+            df["x"] = np.arange(df.shape[0])
+            df["y"] = 0
             coils = loCols[:n]
             coilsInph = loCols[n:]
         elif fnameHi is not None:
             df = hiFile
-            df['x'] = np.arange(df.shape[0])
-            df['y'] = 0
+            df["x"] = np.arange(df.shape[0])
+            df["y"] = 0
             coils = hiCols[:n]
             coilsInph = hiCols[n:]
-        df = df.rename(columns={'Altitude':'elevation'})
+        df = df.rename(columns={"Altitude": "elevation"})
 
         if df is not None:
             self.coils = coils
             self.coilsInph = coilsInph
             coilInfo = [self.getCoilInfo(c) for c in self.coils]
             self.freqs = np.repeat([freq], len(self.coils))
-            self.cspacing = [a['coilSeparation'] for a in coilInfo]
-            self.cpos = [a['orientation'] for a in coilInfo]
-            self.hx = np.repeat([hx], len(self.coils))*0 # as we corrected it before
+            self.cspacing = [a["coilSeparation"] for a in coilInfo]
+            self.cpos = [a["orientation"] for a in coilInfo]
+            self.hx = np.repeat([hx], len(self.coils)) * 0  # as we corrected it before
             self.df = df
-            self.sensor = device 
+            self.sensor = device
             if calib is not None:
                 self.gfCorrection(calib=calib)
             else:
-                print('You might need to apply the GF correction (Problem.gfCorrection()) if you wish to invert the data.')
-            
-            
-    ### jamyd91 contribution edited by jkl ### 
+                print(
+                    "You might need to apply the GF correction (Problem.gfCorrection()) if you wish to invert the data."
+                )
+
+    ### jamyd91 contribution edited by jkl ###
     def computeStat(self, timef=None):
-        """Compute geometrical statistics of consective points: azimuth and 
+        """Compute geometrical statistics of consective points: azimuth and
         bearing of walking direction, time between consective measurements and
         distance between consecutive measurements. Results added to the main
         dataframe.
-        
+
         Parameters
         ----------
         timef : str, optional
             Time format of the 'time' column of the dataframe (if available).
             To be passed to `pd.to_datetime()`. If `None`, it will be inferred.
             e.g. '%Y-%m-%d %H:%M:%S'
-            
+
         Notes
         -----
         Requires projected spatial data (using convertFromCoord() if needed).
         """
         df = self.df
-        x = df['x'].values
-        y = df['y'].values
-        interdist = np.sqrt(np.sum(np.diff(np.c_[x,y], axis=0)**2, axis=1))
-        bearing = np.zeros(len(x)-1) # first point doesn't have bearing
-        azimuth = np.zeros(len(x)-1) # or azimuth
+        x = df["x"].values
+        y = df["y"].values
+        interdist = np.sqrt(np.sum(np.diff(np.c_[x, y], axis=0) ** 2, axis=1))
+        bearing = np.zeros(len(x) - 1)  # first point doesn't have bearing
+        azimuth = np.zeros(len(x) - 1)  # or azimuth
 
         # time handling
-        if 'time' in df.columns:
-            tcol = 'time'
-        elif 'Time' in df.columns:
-            tcol = 'Time'
-        elif 'date' in df.columns:
-            tcol = 'date'
-        elif 'Date' in df.columns:
-            tcol = 'Date'
+        if "time" in df.columns:
+            tcol = "time"
+        elif "Time" in df.columns:
+            tcol = "Time"
+        elif "date" in df.columns:
+            tcol = "date"
+        elif "Date" in df.columns:
+            tcol = "Date"
         else:
             tcol = None
         if tcol is not None:
             times = pd.to_datetime(df[tcol], format=timef)
-            
-        def quadrantCheck(dx,dy):
+
+        def quadrantCheck(dx, dy):
             quad = 0
             edge = False
-            if dx>0 and dy>0:#both positive
-                quad = 1 # 'NE'
-            elif dx>0 and dy<0:
-                quad = 2 # 'SE'
-            elif dx<0 and dy<0:#both negative
-                quad = 3 # 'SW'
-            elif dx<0 and dy>0:
-                quad = 4 # 'NE'
-            else:#edge case
+            if dx > 0 and dy > 0:  # both positive
+                quad = 1  # 'NE'
+            elif dx > 0 and dy < 0:
+                quad = 2  # 'SE'
+            elif dx < 0 and dy < 0:  # both negative
+                quad = 3  # 'SW'
+            elif dx < 0 and dy > 0:
+                quad = 4  # 'NE'
+            else:  # edge case
                 edge = True
-                if dx==0 and dy==0:
-                    quad = 0 #'0'
-                elif dx==0 and dy>0:
+                if dx == 0 and dy == 0:
+                    quad = 0  #'0'
+                elif dx == 0 and dy > 0:
                     quad = 0
-                elif dx>0 and dy==0:
+                elif dx > 0 and dy == 0:
                     quad = 90
-                elif dx==0 and dy<0:
+                elif dx == 0 and dy < 0:
                     quad = 180
-                elif dx<0 and dy==0:
+                elif dx < 0 and dy == 0:
                     quad = 270
             return quad, edge
+
         quadrantCheck = np.vectorize(quadrantCheck)
-                    
-        dx = np.diff(x) # delta x 
-        dy = np.diff(y) # delta y 
-        h = np.sqrt(dx**2 + dy**2) # length of hypothenus 
-        
+
+        dx = np.diff(x)  # delta x
+        dy = np.diff(y)  # delta y
+        h = np.sqrt(dx**2 + dy**2)  # length of hypothenus
+
         # computing quadrant and if point is on edge case
-        quad, edge = quadrantCheck(dx,dy)
-        angle = np.rad2deg(np.arcsin(dx/h)) # angle of measurement direction relative to north 
+        quad, edge = quadrantCheck(dx, dy)
+        angle = np.rad2deg(
+            np.arcsin(dx / h)
+        )  # angle of measurement direction relative to north
 
         # computing azimuth
         azimuth[edge] = quad[edge]
-        
+
         ie = (edge == False) & (quad == 1)
         azimuth[ie] = angle[ie]
-        
+
         ie = (edge == False) & (quad == 2)
         azimuth[ie] = 180 - angle[ie]
-        
+
         ie = (edge == False) & (quad == 3)
         azimuth[ie] = 180 + abs(angle[ie])
-        
+
         ie = (edge == False) & (quad == 4)
         azimuth[ie] = 360 - abs(angle[ie])
-        
+
         # computing bearing
-        bearing[azimuth > 180] = azimuth[azimuth > 180] - 180 # add 180 in order to get a postive bearing or strike 
+        bearing[azimuth > 180] = (
+            azimuth[azimuth > 180] - 180
+        )  # add 180 in order to get a postive bearing or strike
         bearing[azimuth <= 180] = azimuth[azimuth <= 180]
 
-        df['interdist'] = np.r_[0, interdist] # distance between consecutive points 
-        df['azimuth'] = np.r_[0, azimuth] # walking direction in terms of azimuth relative to local coordinate system
-        df['bearing'] = np.r_[0, bearing] # walking direction in terms of bearing relative to local coordinate system
-        df['surveyTime'] = times # times in python datetime format
-        
-        if tcol != 'none':
+        df["interdist"] = np.r_[0, interdist]  # distance between consecutive points
+        df["azimuth"] = np.r_[
+            0, azimuth
+        ]  # walking direction in terms of azimuth relative to local coordinate system
+        df["bearing"] = np.r_[
+            0, bearing
+        ]  # walking direction in terms of bearing relative to local coordinate system
+        df["surveyTime"] = times  # times in python datetime format
+
+        if tcol != "none":
             elapsed = times - times[0]
-            df['elapsed(sec)'] = [a.seconds for a in elapsed]# number of seconds elasped 
-            
+            df["elapsed(sec)"] = [
+                a.seconds for a in elapsed
+            ]  # number of seconds elasped
+
         self.df = df
-    
-    
+
     def filterRepeated(self, tolerance=0.2):
         """Remove consecutive points when the distance between them is
         below `tolerance`.
-        
+
         Parameters
         ----------
         tolerance : float, optional
             Minimum distance away previous point in order to be retained.
         """
         # error checking
-        if not isinstance(tolerance,int) and not isinstance(tolerance,float):
+        if not isinstance(tolerance, int) and not isinstance(tolerance, float):
             raise ValueError("tolerance instance should be int or float")
-        if 'interdist' not in self.df.columns:
+        if "interdist" not in self.df.columns:
             self.computeStat()
-        i2keep = self.df['interdist'].values > tolerance
-        print('{:d}/{:d} data removed (filterRepeated).'.format(np.sum(~i2keep), len(i2keep)))
+        i2keep = self.df["interdist"].values > tolerance
+        print(
+            "{:d}/{:d} data removed (filterRepeated).".format(
+                np.sum(~i2keep), len(i2keep)
+            )
+        )
         self.df = self.df[i2keep].reset_index(drop=True)
-        
-    
-    
+
     def fitlerBearing(self, phiMin, phiMax):
-        """Keep measurements in a certain bearing range between phiMin and phiMax. 
-        
+        """Keep measurements in a certain bearing range between phiMin and phiMax.
+
         Parameters
         ----------
         phiMin : float, optional
-            Minimum angle, in degrees. 
+            Minimum angle, in degrees.
         phiMax : float, optional
             Maximum angle, in degrees.
         """
         # error checking
-        if not isinstance(phiMin,int) and not isinstance(phiMin,float):
+        if not isinstance(phiMin, int) and not isinstance(phiMin, float):
             raise ValueError("phiMin instance should be int or float")
-        if not isinstance(phiMax,int) and not isinstance(phiMax,float):
+        if not isinstance(phiMax, int) and not isinstance(phiMax, float):
             raise ValueError("phiMax instance should be int or float")
         if phiMin >= phiMax:
-            raise ValueError("Min and max bearings cannot be the same, and min must be smaller!")
-        if 'bearing' not in self.df.columns:
+            raise ValueError(
+                "Min and max bearings cannot be the same, and min must be smaller!"
+            )
+        if "bearing" not in self.df.columns:
             self.computeStat()
-        bearing = self.df['bearing'].values
+        bearing = self.df["bearing"].values
         i2keep = (bearing > phiMin) & (bearing < phiMax)
-        print('{:d}/{:d} data removed (filterBearing).'.format(np.sum(~i2keep), len(i2keep)))
+        print(
+            "{:d}/{:d} data removed (filterBearing).".format(
+                np.sum(~i2keep), len(i2keep)
+            )
+        )
         self.df = self.df[i2keep].reset_index(drop=True)
-        
-        
-        
-    def driftCorrection(self, xStation=None, yStation=None, coils='all', 
-                        radius=1, fit='all', ax=None, apply=False):
+
+    def driftCorrection(
+        self,
+        xStation=None,
+        yStation=None,
+        coils="all",
+        radius=1,
+        fit="all",
+        ax=None,
+        apply=False,
+    ):
         """Compute drift correction from EMI given a station point and a radius.
 
         Parameters
@@ -1466,84 +1636,93 @@ class Survey(object):
         apply : bool, optional
             If `True` the drift correction will be applied. The default is False.
         """
-        x = self.df['x'].values
-        y = self.df['y'].values
+        x = self.df["x"].values
+        y = self.df["y"].values
         if xStation is None:
             xStation = x[0]
         if yStation is None:
             yStation = y[0]
-        if coils == 'all':
+        if coils == "all":
             coils = self.coils
         if isinstance(coils, str):
             coils = [coils]
         val = self.df[coils].values
-        dist = np.sqrt((x-xStation)**2 + (y-yStation)**2)
+        dist = np.sqrt((x - xStation) ** 2 + (y - yStation) ** 2)
         idrift = dist < radius
         igroup = np.where(np.diff(idrift) != 0)[0]
         igroup = np.r_[0, igroup, val.shape[0]]
         a = 0 if idrift[0] == True else 1
-        
+
         # compute group mean and std
-        groups = [val[igroup[i]:igroup[i+1],:] for i in np.arange(len(igroup)-1)[a::2]]
-        print('{:d} drift points detected.'.format(len(groups)))
+        groups = [
+            val[igroup[i] : igroup[i + 1], :] for i in np.arange(len(igroup) - 1)[a::2]
+        ]
+        print("{:d} drift points detected.".format(len(groups)))
         vm = np.array([np.mean(g, axis=0) for g in groups])
-        vsem = np.array([np.std(g, axis=0)/np.sqrt(len(g)) for g in groups])
-        if fit == 'all':
+        vsem = np.array([np.std(g, axis=0) / np.sqrt(len(g)) for g in groups])
+        if fit == "all":
             xs = np.linspace(0, 1, vm.shape[0])
             vpred = np.zeros(vm.shape)
             xpred = np.arange(vm.shape[0])
             for i, coil in enumerate(coils):
-                slope, offset = np.polyfit(xs, vm[:,i], 1)
-                print('{:s}: ECa = {:.2f} * x {:+.2f}'.format(coil, slope, offset))
-                vpred[:,i] = xs * slope + offset
+                slope, offset = np.polyfit(xs, vm[:, i], 1)
+                print("{:s}: ECa = {:.2f} * x {:+.2f}".format(coil, slope, offset))
+                vpred[:, i] = xs * slope + offset
                 if apply:
-                    vm[:,i] = vm[:,i] - xs * slope - offset + np.mean(vm[:,i])
-                    corr = -np.linspace(0, 1, self.df.shape[0]) * slope - offset + np.mean(vm[:,i])
-                    self.df.loc[:,coil] = self.df[coil].values + corr
-        elif fit == 'each':
-            xs = np.array([0,1])
-            vpred = np.zeros((vm.shape[0]*2-2, vm.shape[1]))
-            xpred = np.repeat(np.arange(vm.shape[0]),2)[1:-1]
+                    vm[:, i] = vm[:, i] - xs * slope - offset + np.mean(vm[:, i])
+                    corr = (
+                        -np.linspace(0, 1, self.df.shape[0]) * slope
+                        - offset
+                        + np.mean(vm[:, i])
+                    )
+                    self.df.loc[:, coil] = self.df[coil].values + corr
+        elif fit == "each":
+            xs = np.array([0, 1])
+            vpred = np.zeros((vm.shape[0] * 2 - 2, vm.shape[1]))
+            xpred = np.repeat(np.arange(vm.shape[0]), 2)[1:-1]
             for i, coil in enumerate(coils):
-                for j in range(vm.shape[0]-1):
-                    slope, offset = np.polyfit(xs, vm[j:j+2,i], 1)
-                    vpred[j*2:j*2+2,i] = xs * slope + offset
+                for j in range(vm.shape[0] - 1):
+                    slope, offset = np.polyfit(xs, vm[j : j + 2, i], 1)
+                    vpred[j * 2 : j * 2 + 2, i] = xs * slope + offset
                     if apply:
                         # correct part between two drift points
                         ie = np.zeros(self.df.shape[0], dtype=bool)
-                        ie[igroup[a+j*2+1]:igroup[a+j*2+2]] = True
-                        corr = -(np.linspace(0, 1, np.sum(ie)) * slope + offset) + np.mean(vm[:,i])
+                        ie[igroup[a + j * 2 + 1] : igroup[a + j * 2 + 2]] = True
+                        corr = -(
+                            np.linspace(0, 1, np.sum(ie)) * slope + offset
+                        ) + np.mean(vm[:, i])
                         self.df.loc[ie, coil] = self.df[ie][coil].values + corr
                 if apply:
                     # correct drift points
                     for j in range(vm.shape[0]):
                         ie = np.zeros(self.df.shape[0], dtype=bool)
-                        ie[igroup[a+j*2]:igroup[a+j*2+1]] = True
-                        corr = -vm[j,i] + np.mean(vm[:,i])
+                        ie[igroup[a + j * 2] : igroup[a + j * 2 + 1]] = True
+                        corr = -vm[j, i] + np.mean(vm[:, i])
                         self.df.loc[ie, coil] = self.df[ie][coil].values + corr
-                    vm[:,i] = np.mean(vm[:,i]) # for graph
+                    vm[:, i] = np.mean(vm[:, i])  # for graph
 
         # graph
         if ax is None:
             fig, ax = plt.subplots()
         xx = np.arange(vm.shape[0])
         for i, coil in enumerate(coils):
-            cax = ax.errorbar(xx, vm[:,i], yerr=vsem[:,i],
-                        marker='.', label=coil, linestyle='none')
-            ax.plot(xpred, vpred[:,i], '-', color=cax[0].get_color())
-        ax.set_ylabel('ECa at drift station [mS/m]')
-        ax.set_xlabel('Drift points')
+            cax = ax.errorbar(
+                xx, vm[:, i], yerr=vsem[:, i], marker=".", label=coil, linestyle="none"
+            )
+            ax.plot(xpred, vpred[:, i], "-", color=cax[0].get_color())
+        ax.set_ylabel("ECa at drift station [mS/m]")
+        ax.set_xlabel("Drift points")
         ax.legend()
         if apply is True:
-            ax.set_title('Drift fitted and applied')
+            ax.set_title("Drift fitted and applied")
         else:
-            ax.set_title('Drift fitted but not applied')
-        
-    
-    def crossOverPointsDrift(self, coil=None, ax=None, dump=print, minDist=1,
-                             apply=False): # pragma: no cover
-        """ Build an error model based on the cross-over points.
-        
+            ax.set_title("Drift fitted but not applied")
+
+    def crossOverPointsDrift(
+        self, coil=None, ax=None, dump=print, minDist=1, apply=False
+    ):  # pragma: no cover
+        """Build an error model based on the cross-over points.
+
         Parameters
         ----------
         coil : str, optional
@@ -1563,42 +1742,39 @@ class Survey(object):
         if isinstance(coil, str):
             coils = [coil]
         df = self.df
-        dist = cdist(df[['x', 'y']].values,
-                     df[['x', 'y']].values)
-        ix, iy = np.where(((dist < minDist) & (dist > 0))) # 0 == same point
-        ifar = (ix - iy) > 200 # they should be at least 200 measuremens apart
+        dist = cdist(df[["x", "y"]].values, df[["x", "y"]].values)
+        ix, iy = np.where(((dist < minDist) & (dist > 0)))  # 0 == same point
+        ifar = (ix - iy) > 200  # they should be at least 200 measuremens apart
         ix, iy = ix[ifar], iy[ifar]
-        print('found', len(ix), '/', df.shape[0], 'crossing points')
-        
+        print("found", len(ix), "/", df.shape[0], "crossing points")
+
         val = df[coils].values
-        x = val[ix,:]
-        y = val[iy,:]
+        x = val[ix, :]
+        y = val[iy, :]
         misfit = np.abs(x - y)
-        xsample = np.abs(ix - iy) # number of sample taken between
+        xsample = np.abs(ix - iy)  # number of sample taken between
         # two pass
-        
+
         if ax is None:
             fig, ax = plt.subplots()
-        ax.semilogy(xsample, misfit, '.')
-        ax.set_xlabel('Number of samples between two pass at same location')
-        ax.set_ylabel('Misfit between the two pass [mS/m]')
-        #TODO not sure about this
+        ax.semilogy(xsample, misfit, ".")
+        ax.set_xlabel("Number of samples between two pass at same location")
+        ax.set_ylabel("Misfit between the two pass [mS/m]")
+        # TODO not sure about this
 
     # deprecated methods
-    def convertFromNMEA(self, targetProjection='EPSG:3395'): # British Grid 1936
+    def convertFromNMEA(self, targetProjection="EPSG:3395"):  # British Grid 1936
         """**deprecated, use convertFromCoord() instead.**
         Convert coordinates string (NMEA or DMS) to selected CRS projection.
-    
+
         Parameters
         ----------
         targetProjection : str, optional
             Target CRS, in EPSG number: e.g. `targetProjection='EPSG:3395'`
             for the British Grid.
         """
-        warnings.warn('The function is deprecated, use convertFromCoord() instead.',
-                      DeprecationWarning)
+        warnings.warn(
+            "The function is deprecated, use convertFromCoord() instead.",
+            DeprecationWarning,
+        )
         self.convertFromCoord(targetProjection=targetProjection)
-        
-        
-
-        

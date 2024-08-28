@@ -13,16 +13,14 @@ the quadrature (imaginary part).
 """
 # from numba import njit, jit
 import os
-import numpy as np
 
+import numpy as np
+# from hankel import HankelTransform
+from scipy import special, integrate
 # import matplotlib.pyplot as plt
 # from multiprocessing import Pool, Manager
 from scipy.constants import mu_0
-
-# from hankel import HankelTransform
-from scipy import special, integrate
-from scipy.optimize import newton, brent, minimize_scalar, minimize, curve_fit
-
+from scipy.optimize import newton
 
 # useful functions for Hankel transform
 
@@ -50,7 +48,7 @@ def func_hankel(typ, K, r):
         #        w = np.loadtxt('j1_140.txt')
         w = hankel_w1
     lamb = (
-        1 / r * 10 ** (a + (i - 1) * s)
+            1 / r * 10 ** (a + (i - 1) * s)
     )  # lambda here is not the frequency just your integral variable
     #    K0 = np.exp(-lamb0*(z+htx)+getRTE(lamb0)*np.exp(lamb0*(z-htx)))*lamb0
     hankel = np.sum(K(lamb) * w) / r
@@ -123,17 +121,17 @@ def getR0_1(lamb, sigg, f, d):
     sigma = np.r_[0, sigg.copy()]  # sigma 0 is above the ground
     d = np.r_[d.copy(), 0]  # last one won't be used, just for index
     omega = 2 * np.pi * f  # assume single omega here as lamb is already a vector
-    u = np.sqrt(lamb**2 + 1j * sigma * mu_0 * omega)
+    u = np.sqrt(lamb ** 2 + 1j * sigma * mu_0 * omega)
     N = u / (1j * mu_0 * omega)
     Y = (
-        np.zeros(N.shape, dtype=complex) * np.nan
+            np.zeros(N.shape, dtype=complex) * np.nan
     )  # Y is actually -1 smaller than N but easier like this for index
     Y[-1] = N[-1]
     for i in range(len(N) - 2, 0, -1):
         Y[i] = (
-            N[i]
-            * (Y[i + 1] + N[i] * np.tanh(d[i] * u[i]))
-            / (N[i] + Y[i + 1] * np.tanh(d[i] * u[i]))
+                N[i]
+                * (Y[i + 1] + N[i] * np.tanh(d[i] * u[i]))
+                / (N[i] + Y[i + 1] * np.tanh(d[i] * u[i]))
         )
     R0 = (N[0] - Y[1]) / (N[0] + Y[1])
     return R0
@@ -163,7 +161,7 @@ def getR0_2(lamb, sigg, f, d):
     h = np.concatenate([[0], d, [0]])  # last one won't be used, because Rn+1 = 0 and
     # first zero won't be used because we never use hn, always hn+1, just
     # for easier indexing
-    gamma = np.sqrt(lamb**2 + 1j * 2 * np.pi * f * mu_0 * sigma)
+    gamma = np.sqrt(lamb ** 2 + 1j * 2 * np.pi * f * mu_0 * sigma)
     R = np.zeros((len(sigma)), dtype=complex)  # *np.nan
     #    R[-1] = 0 # no waves from the lower half space
     for i in range(len(sigma) - 2, -1, -1):
@@ -172,7 +170,7 @@ def getR0_2(lamb, sigg, f, d):
         )
         den = 1 + (gamma[i] - gamma[i + 1]) / (gamma[i] + gamma[i + 1]) * R[
             i + 1
-        ] * np.exp(-2 * gamma[i + 1] * h[i + 1])
+            ] * np.exp(-2 * gamma[i + 1] * h[i + 1])
         R[i] = num / den
     return R[0]
 
@@ -213,15 +211,15 @@ def getQhomogeneous(cpos, s, sig, f):
     g = np.sqrt(1j * omega * mu_0 * sig)  # for gamma
     if cpos == "hcp":
         Q = (
-            2
-            / (g * s) ** 2
-            * (9 - (9 + 9 * g * s + 4 * (g * s) ** 2 + (g * s) ** 3) * np.exp(-g * s))
+                2
+                / (g * s) ** 2
+                * (9 - (9 + 9 * g * s + 4 * (g * s) ** 2 + (g * s) ** 3) * np.exp(-g * s))
         )
     elif cpos == "vcp":
         Q = 2 * (
-            1
-            - 3 / (g * s) ** 2
-            + (3 + 3 * g * s + (g * s) ** 2) * np.exp(-g * s) / (g * s) ** 2
+                1
+                - 3 / (g * s) ** 2
+                + (3 + 3 * g * s + (g * s) ** 2) * np.exp(-g * s) / (g * s) ** 2
         )
     return Q
 
@@ -243,7 +241,7 @@ def getQ(cpos, s, sig, f, h, typ=5):
         if typ == 1 | 5:
 
             def func(lamb):
-                return getRn(lamb, sig, f, h) * lamb**2
+                return getRn(lamb, sig, f, h) * lamb ** 2
 
         else:
 
@@ -257,7 +255,7 @@ def getQ(cpos, s, sig, f, h, typ=5):
         5: func_hankel5,
     }
     dicoBessel = {"hcp": 0, "vcp": 1}
-    dicoCoefs = {"hcp": s**3, "vcp": s**2}
+    dicoCoefs = {"hcp": s ** 3, "vcp": s ** 2}
     return 1 - dicoCoefs[cpos] * dicoHankel[typ](dicoBessel[cpos], func, s)
 
 
@@ -271,7 +269,7 @@ def Q2eca(Q, s, f=30000):
     """Returns apparent conductivity given the quadrature value (assuming we
     are in the Low Induction Number (LIN) approximation)
     """
-    return 4 / (2 * np.pi * f * mu_0 * s**2) * np.imag(Q)
+    return 4 / (2 * np.pi * f * mu_0 * s ** 2) * np.imag(Q)
 
 
 def eca2Q(eca, s, f=30000):
@@ -279,7 +277,7 @@ def eca2Q(eca, s, f=30000):
     conductivity value (assuming we are in the Low Induction Number (LIN)
     approximation)
     """
-    return eca / (4 / (2 * np.pi * f * mu_0 * s**2))
+    return eca / (4 / (2 * np.pi * f * mu_0 * s ** 2))
 
 
 # test
@@ -325,10 +323,11 @@ def getRn2(lamb, sigg, f, d):  # compute reflexion coefficients
     R[-1, :] = 0 + 0j  # no waves from the lower half space
     for i in range(sigmaLen - 2, -1, -1):  # it's recursive so needs for loop
         R[i, :] = (gamma[i, :] - gamma[i + 1, :]) / (gamma[i, :] + gamma[i + 1, :]) + R[
-            i + 1, :
-        ] * np.exp(-2 * gamma[i + 1, :] * h[i + 1])
+                                                                                      i + 1, :
+                                                                                      ] * np.exp(
+            -2 * gamma[i + 1, :] * h[i + 1])
         R[i, :] /= 1 + (gamma[i, :] - gamma[i + 1, :]) / (
-            gamma[i, :] + gamma[i + 1, :]
+                gamma[i, :] + gamma[i + 1, :]
         ) * R[i + 1, :] * np.exp(-2 * gamma[i + 1, :] * h[i + 1])
 
     return R[0, :]
@@ -347,17 +346,17 @@ def getQ2(cpos, s, sig, f, h, typ=None):
         w = hankel5_w1  # for Bessel function of order 1
         K = getRn2(lamb, sig, f, h) * lamb  # kernel with reflexion coef
         hankel = np.sum(w * K / s)  # hankel transform
-        return 1 - s**2 * hankel
+        return 1 - s ** 2 * hankel
     elif cpos == "hcp":
         w = hankel5_w0  # for Bessel function of order 0
-        K = getRn2(lamb, sig, f, h) * lamb**2  # kernel with reflexion coef
+        K = getRn2(lamb, sig, f, h) * lamb ** 2  # kernel with reflexion coef
         hankel = np.sum(w * K / s)  # hankel transform
-        return 1 - s**3 * hankel
+        return 1 - s ** 3 * hankel
     elif cpos == "prp":  # see Anderson for correct formula
         w = hankel5_w1  # for Bessel function of order 0
-        K = getRn2(lamb, sig, f, h) * lamb**2  # kernel with reflexion coef
+        K = getRn2(lamb, sig, f, h) * lamb ** 2  # kernel with reflexion coef
         hankel = np.sum(w * K / s)  # hankel transform
-        return 0 - s**3 * hankel
+        return 0 - s ** 3 * hankel
 
 
 def getQs(cond, depths, s, cpos, f, hx=0):
@@ -541,14 +540,14 @@ def emSens(depths, s, coilPosition, hx=0, rescaled=False):
     z = np.array(depths) / s
     # from mcNeil 1980 in Callegary2007
     if coilPosition == "hcp":
-        cs = 1 / np.sqrt(4 * z**2 + 1)
+        cs = 1 / np.sqrt(4 * z ** 2 + 1)
     if coilPosition == "vcp":
-        cs = np.sqrt(4 * z**2 + 1) - 2 * z
+        cs = np.sqrt(4 * z ** 2 + 1) - 2 * z
     if coilPosition == "prp":
-        cs = 1 - 2 * z / np.sqrt(4 * z**2 + 1)
+        cs = 1 - 2 * z / np.sqrt(4 * z ** 2 + 1)
 
     if (
-        hx != 0
+            hx != 0
     ) and rescaled is True:  # rescale the cumulative sensitivity so that it reaches 1
         cs = cs / cs[0]
 
@@ -628,7 +627,7 @@ def emSensAndrade(depths, s, coilPosition, hx=0):
         cs = ((4 * (hx / s) ** 2 + 1) ** 0.5) / (4 * (z + hx / s) ** 2 + 1) ** 0.5
     if coilPosition == "vcp":
         cs = ((4 * (z + hx / s) ** 2 + 1) ** 0.5 - 2 * (z + hx / s)) / (
-            (4 * (hx / s) ** 2 + 1) ** 0.5 - 2 * hx / s
+                (4 * (hx / s) ** 2 + 1) ** 0.5 - 2 * hx / s
         )
     return cs
 
@@ -713,7 +712,6 @@ def buildJacobian(depths, s, cpos):
         jacob[i, :-1] = cs[:-1] - cs[1:]
         jacob[i, -1] = cs[-1]
     return jacob
-
 
 # test
 # J = buildJacobian([0.5, 0.7],[0.32, 0.72, 1.14],['vcp','vcp','vcp'])

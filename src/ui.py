@@ -57,10 +57,8 @@ from PyQt5.QtWidgets import (
     QHeaderView,
     QProgressBar,
     QStackedLayout,
-    QGroupBox,
     QFrame,
     QMenu,
-    QAction,
 )  # , QRadioButton, QListWidget, QShortcut)
 from PyQt5.QtGui import (
     QIcon,
@@ -1280,9 +1278,9 @@ class App(QMainWindow):
 
         class ModelTable(QTableWidget):
             def __init__(
-                self,
-                nrow=3,
-                headers=["Layer bottom depth [m]", "Fixed", "EC [mS/m]", "Fixed"],
+                    self,
+                    nrow=3,
+                    headers=["Layer bottom depth [m]", "Fixed", "EC [mS/m]", "Fixed"],
             ):
                 ncol = len(headers)
                 super(ModelTable, self).__init__(nrow, ncol)
@@ -2599,11 +2597,11 @@ the ERT calibration will account for it.</p>
             elif any(self.pcs["COORD_REF_SYS_NAME"] == val) is True:
                 epsg_code = self.pcs["COORD_REF_SYS_CODE"][
                     self.pcs["COORD_REF_SYS_NAME"] == val
-                ].values
+                    ].values
             elif any(self.pcs["COORD_REF_SYS_NAME_rev"] == val) is True:
                 epsg_code = self.pcs["COORD_REF_SYS_CODE"][
                     self.pcs["COORD_REF_SYS_NAME_rev"] == val
-                ].values
+                    ].values
             epsgVal = "EPSG:" + str(epsg_code[0])
             self.problem.setProjection(targetProjection=epsgVal)
             self.writeLog('k.setProjection(targetProjection="{:s}")'.format(epsgVal))
@@ -2798,12 +2796,12 @@ the ERT calibration will account for it.</p>
                 if type(val) == str:
                     arg += key + '="{:s}", '.format(val)
                 elif (
-                    type(val) == int
-                    or type(val) == float
-                    or type(val) == tuple
-                    or type(val) == list
-                    or type(val) == bool
-                    or val is None
+                        type(val) == int
+                        or type(val) == float
+                        or type(val) == tuple
+                        or type(val) == list
+                        or type(val) == bool
+                        or val is None
                 ):
                     arg += key + "={:s}, ".format(str(val))
                 elif type(val) == type(np.ndarray):

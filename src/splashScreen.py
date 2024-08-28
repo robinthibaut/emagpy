@@ -2,16 +2,16 @@
 
 """
 
-from PyQt5.QtWidgets import QSplashScreen, QApplication, QProgressBar
-from PyQt5.QtGui import QPixmap, QIcon, QMovie
-from PyQt5.QtCore import Qt
-from zipfile import ZipFile, ZipInfo
-from subprocess import Popen
 import os
-import sys
-import time
-import shutil
 import platform
+import shutil
+import sys
+from subprocess import Popen
+from zipfile import ZipFile, ZipInfo
+
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPixmap, QMovie
+from PyQt5.QtWidgets import QSplashScreen, QApplication, QProgressBar
 
 OS = platform.system()
 
@@ -28,7 +28,6 @@ else:
     bundle_dir = os.path.dirname(os.path.abspath(__file__))
 print("we are", frozen, "frozen")
 print("bundle dir is", bundle_dir)
-
 
 """ PERMISSION ISSUE WITH ZIPFILE MODULE
 https://stackoverflow.com/questions/39296101/python-zipfile-removes-execute-permissions-from-binaries

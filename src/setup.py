@@ -1,7 +1,7 @@
 # to build run : python3 setup.py sdist bdist_wheel
 import setuptools
-from emagpy import EMagPy_version
 
+from emagpy import EMagPy_version
 
 with open("README.md", "r") as fh:
     long_description = fh.read()

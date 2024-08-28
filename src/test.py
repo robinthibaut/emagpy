@@ -7,12 +7,13 @@ Created on Thu Jul 11 20:36:28 2019
 """
 import os
 import time
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+
 from emagpy import Problem
 
 datadir = "examples/"
-
 
 # %% importing from GF instrument and filtering
 k = Problem()
@@ -50,7 +51,6 @@ k.showMap()
 k.filterRepeated(tolerance=1.5)
 k.showMap()
 
-
 # %% mapping potatoes field
 k = Problem()
 k.createMergedSurvey(
@@ -84,7 +84,6 @@ k.gridData(method="idw")
 # k.gridData(method='kriging')
 k.showMap()
 
-
 # %% inversion with uncertainty
 k = Problem()
 k.createSurvey(datadir + "cover-crop/coverCrop.csv")
@@ -108,7 +107,6 @@ k.invert(
 k.showResults(errorbar=True, overlay=True)
 k.showResults(errorbar=True, overlay=False, contour=True)
 k.showProfile(errorbar=True)
-
 
 # %% inversion
 k = Problem()
@@ -192,7 +190,6 @@ for m in ["L-BFGS-B", "ROPE"]:
         # fig.show()
 print("\n".join(infos))
 
-
 # %% testing gauss-Newton
 k = Problem()
 k.createSurvey(datadir + "cover-crop/coverCropTransect.csv")
@@ -216,7 +213,6 @@ k.invert(forwardModel="FSeq", method="Gauss-Newton")
 k.showResults(ax=ax, rmse=True, vmin=10, vmax=30)
 ax.set_title("(c) FSeq with Gauss-Newton")
 
-
 # %% test lateral smoothing
 k = Problem()
 k.createSurvey(datadir + "cover-crop/coverCrop.csv")
@@ -224,7 +220,6 @@ k.surveys[0].df = k.surveys[0].df[:10]
 k.setInit(depths0=[0.5], fixedDepths=[False])
 k.invert(forwardModel="CS", method="SCEUA", alpha=0.07, beta=0.1, rep=300)
 k.showResults(errorbar=True)
-
 
 # %% from background survey (time-lapse)
 # try a few variants
@@ -265,7 +260,6 @@ k.showResults(index=1, rmse=True, ax=axs[1])
 k.computeChange()  # compute change in inverted EC
 k.showResults(index=1, cmap="bwr", ax=axs[2])
 
-
 # %%  parallel and sequential inversion
 k = Problem()
 k.createSurvey(datadir + "cover-crop/coverCrop.csv")
@@ -302,7 +296,6 @@ print("SEQ elapsed {:.2f}s".format(time.time() - t2))
 print("PAR elapsed {:.2f}s".format(time.time() - t0))
 k.showResults()
 
-
 # %% calibration with Boxford dataset
 k = Problem()
 k.createSurvey(datadir + "boxford-calib/eca_calibration.csv")
@@ -335,7 +328,6 @@ k.showResults(index=1, cmap="bwr", dist=True)
 k = Problem()
 k.setProjection("EPSG:27700")
 k.createSurvey(datadir + "saprolite/regolith.csv")
-
 
 # %% mapping and save georeferenced slice
 k = Problem()
@@ -376,7 +368,6 @@ os.remove(datadir + "saprolite/slice.tiff")
 os.remove(datadir + "saprolite/inv_regolith.csv")
 os.remove(datadir + "saprolite/data_regolith.csv")
 
-
 # %% forward modelling
 nlayer = 2
 npos = 20
@@ -406,7 +397,6 @@ k1.setInit(depths0=[0.5], fixedDepths=[False], conds0=[20, 30])
 k1.invert(method="ROPE")
 k1.showResults(ax=axs[1], rmse=True)
 
-
 # %% quasi3D inversion
 k = Problem()
 k.createSurvey(datadir + "cover-crop/coverCrop.csv")
@@ -427,7 +417,6 @@ except:
     pass
 k.showDepths()
 k.showDepths(contour=True, pts=True)
-
 
 # %% ANN inversion
 # k = Problem()

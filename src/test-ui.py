@@ -7,13 +7,15 @@ Created on Tue Nov 19 15:14:25 2019
 """
 # to run use: python3 -m pytest test-ui.py
 
+import time
+
 from PyQt5 import QtCore
 
 from ui import App
-import time
 
 testdir = "emagpy/test/"
 sleepTimeDefault = 1  # s
+
 
 # %%
 
